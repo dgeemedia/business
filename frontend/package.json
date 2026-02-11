@@ -1,0 +1,37 @@
+{
+  "name": "mypadibusiness-frontend",
+  "version": "2.0.0",
+  "description": "Multi-tenant business management platform - Complete Frontend",
+  "private": true,
+  "dependencies": {
+    "react": "^18.2.0",
+    "react-dom": "^18.2.0",
+    "react-router-dom": "^6.20.0",
+    "axios": "^1.6.2",
+    "date-fns": "^3.0.0",
+    "react-hot-toast": "^2.4.1",
+    "recharts": "^2.10.3",
+    "lucide-react": "^0.300.0",
+    "framer-motion": "^10.16.16",
+    "zustand": "^4.4.7",
+    "react-hook-form": "^7.49.2",
+    "zod": "^3.22.4",
+    "@hookform/resolvers": "^3.3.3",
+    "react-phone-number-input": "^3.3.7",
+    "react-rating": "^2.0.5",
+    "clsx": "^2.0.0"
+  },
+  "devDependencies": {
+    "@vitejs/plugin-react": "^4.2.1",
+    "vite": "^5.0.8",
+    "tailwindcss": "^3.4.0",
+    "autoprefixer": "^10.4.16",
+    "postcss": "^8.4.32"
+  },
+  "scripts": {
+    "dev": "vite",
+    "build": "vite build",
+    "preview": "vite preview",
+    "lint": "eslint src --ext js,jsx"
+  }
+}
