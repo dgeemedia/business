@@ -1,3 +1,4 @@
+// frontend/src/pages/staff.jsx
 import React, { useState, useEffect } from 'react';
 import { Plus, Edit, Trash2, UserCheck, UserX } from 'lucide-react';
 import { motion } from 'framer-motion';
