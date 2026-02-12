@@ -90,30 +90,38 @@ api.interceptors.response.use(
   }
 );
 
-// Utility function to get subdomain
+// frontend/src/services/api.js
 export const getSubdomain = () => {
-  // In development, use env variable
+  // DEV: simulate subdomain via VITE_SUBDOMAIN, unless we've cleared it
   if (import.meta.env.DEV) {
-    return import.meta.env.VITE_SUBDOMAIN || null;
-  }
-
-  // In production, extract from hostname
-  const hostname = window.location.hostname;
-  const parts = hostname.split('.');
-
-  // Handle localhost
-  if (hostname === 'localhost' || hostname === '127.0.0.1') {
+    // Check if we've manually cleared the subdomain simulation
+    const cleared = sessionStorage.getItem('clearSubdomain') === 'true';
+    if (cleared) {
+      return null;
+    }
+    const sd = import.meta.env.VITE_SUBDOMAIN;
+    if (sd && sd !== 'null' && sd !== '') {
+      return sd;
+    }
     return null;
   }
 
-  // Check if we have a subdomain
-  // Example: business1.mypadibusiness.com -> business1
-  if (parts.length >= 3) {
-    return parts[0];
-  }
+  // Production logic (unchanged)
+  const hostname = window.location.hostname;
+  if (!hostname) return null;
+  if (hostname === 'localhost' || hostname === '127.0.0.1') return null;
+  if (/^\d+\.\d+\.\d+\.\d+$/.test(hostname)) return null;
 
+  const parts = hostname.split('.');
+  if (parts.length >= 3) {
+    const sub = parts[0].toLowerCase();
+    const reserved = ['www', 'admin', 'app', 'api'];
+    if (reserved.includes(sub)) return null;
+    return sub;
+  }
   return null;
 };
+
 
 // Helper function to build full URL with subdomain
 export const buildSubdomainUrl = (subdomain) => {

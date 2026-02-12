@@ -1,4 +1,3 @@
-// frontend/src/pages/Dashboard.jsx
 import React, { useEffect, useState } from 'react';
 import { 
   TrendingUp, 
@@ -11,11 +10,11 @@ import {
   XCircle
 } from 'lucide-react';
 import { motion } from 'framer-motion';
-import Card from '../shared/Card';
-import Badge from '../shared/Badge';
-import LoadingSpinner from '../shared/LoadingSpinner';
-import orderService from '../../services/orderService';
-import { formatCurrency, formatRelativeTime } from '../../utils/helpers';
+import Card from '../components/shared/Card';
+import Badge from '../components/shared/Badge';
+import LoadingSpinner from '../components/shared/LoadingSpinner';
+import orderService from '../services/orderService';
+import { formatCurrency, formatRelativeTime } from '../utils/helpers';
 
 const Dashboard = () => {
   const [stats, setStats] = useState(null);

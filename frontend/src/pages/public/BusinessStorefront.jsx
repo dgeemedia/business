@@ -1,9 +1,9 @@
+// frontend/src/pages/public/BusinessStorefront.jsx
 import React, { useState, useEffect } from 'react';
 import { ShoppingCart, Star, Phone, MapPin, Clock, X, Send } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
 import toast from 'react-hot-toast';
-import api from '../../services/api';
-import { getSubdomain } from '../../services/api';
+import api, { getSubdomain } from '../../services/api';
 import { formatCurrency } from '../../utils/helpers';
 
 const BusinessStorefront = () => {
@@ -20,29 +20,70 @@ const BusinessStorefront = () => {
     notes: '',
   });
 
+  // ---------- Redirect helper ----------
+  const redirectToMainDomain = () => {
+    if (import.meta.env.DEV) {
+      // In development, VITE_SUBDOMAIN may be set to simulate a subdomain.
+      // If we redirect because the business does not exist, we must exit the subdomain context.
+      // The simplest approach: clear the override by reloading without the env var.
+      // However, environment variables are static, so we recommend unsetting VITE_SUBDOMAIN
+      // when testing non‑existent subdomains. Alternatively, you can remove the env var
+      // from the terminal and restart the dev server.
+      window.location.href = window.location.origin;
+      return;
+    }
+
+    // Production: strip the subdomain from the hostname
+    const hostname = window.location.hostname;
+    const parts = hostname.split('.');
+    if (parts.length >= 3) {
+      // e.g., business1.example.com → example.com
+      const domain = parts.slice(-2).join('.');
+      const port = window.location.port ? `:${window.location.port}` : '';
+      window.location.href = `${window.location.protocol}//${domain}${port}`;
+    } else {
+      // Fallback: current origin (should already be main domain)
+      window.location.href = window.location.origin;
+    }
+  };
+  // -------------------------------------
+
   useEffect(() => {
     fetchBusinessData();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   const fetchBusinessData = async () => {
     try {
       setLoading(true);
       const subdomain = getSubdomain();
-      
+
+      // No subdomain → should never happen on this route, but redirect just in case
       if (!subdomain) {
-        window.location.href = '/';
+        redirectToMainDomain();
         return;
       }
 
-      // Fetch business info
+      // 1. Fetch business info
       const businessResponse = await api.get(`/api/business/public/${subdomain}`);
+      if (!businessResponse.data.business) {
+        // Business not found or inactive – redirect to main landing
+        redirectToMainDomain();
+        return;
+      }
       setBusiness(businessResponse.data.business);
 
-      // Fetch products
+      // 2. Fetch products
       const productsResponse = await api.get(`/api/business/public/${subdomain}/products`);
       setProducts(productsResponse.data.products || []);
     } catch (error) {
-      toast.error('Failed to load store');
+      // Handle 404 specifically – business does not exist
+      if (error.response?.status === 404) {
+        redirectToMainDomain();
+        return;
+      }
+      // For other errors, show a toast but stay on page (maybe a temporary issue)
+      toast.error('Failed to load store. Please try again.');
     } finally {
       setLoading(false);
     }
@@ -99,19 +140,12 @@ const BusinessStorefront = () => {
       return;
     }
 
-    // Format order message for WhatsApp
     const orderMessage = formatWhatsAppMessage();
-    
-    // Clean WhatsApp number (remove special characters)
     const cleanNumber = business.whatsappNumber.replace(/[^\d+]/g, '');
-    
-    // Create WhatsApp URL
     const whatsappUrl = `https://wa.me/${cleanNumber}?text=${encodeURIComponent(orderMessage)}`;
     
-    // Open WhatsApp
     window.open(whatsappUrl, '_blank');
     
-    // Clear cart and close modal
     setCart([]);
     setOrderModalOpen(false);
     setCustomerInfo({ name: '', phone: '', address: '', notes: '' });
@@ -165,6 +199,7 @@ const BusinessStorefront = () => {
     ? products
     : products.filter(p => p.category === selectedCategory);
 
+  // ---------- Render logic ----------
   if (loading) {
     return (
       <div className="min-h-screen flex items-center justify-center">
@@ -173,12 +208,20 @@ const BusinessStorefront = () => {
     );
   }
 
+  // If business is null after loading, we have already attempted a redirect.
+  // This fallback is only shown if the redirect did not happen (e.g., network error).
   if (!business) {
     return (
       <div className="min-h-screen flex items-center justify-center">
         <div className="text-center">
           <h1 className="text-2xl font-bold text-gray-900 mb-2">Store Not Found</h1>
           <p className="text-gray-600">This business does not exist.</p>
+          <button
+            onClick={redirectToMainDomain}
+            className="mt-4 btn btn-primary"
+          >
+            Go to Main Page
+          </button>
         </div>
       </div>
     );

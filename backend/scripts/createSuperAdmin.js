@@ -8,7 +8,7 @@ const prisma = require('../src/lib/prisma');
 // ============================================================================
 
 const SUPER_ADMIN = {
-  email: 'platform-manager@mypadifood.com',     // ⬅️ CHANGE THIS
+  email: 'superadmin@mypadibusiness.com',     // ⬅️ CHANGE THIS
   password: 'SuperAdmin123!',              // ⬅️ CHANGE THIS (make it strong!)
   firstName: 'George',                      // ⬅️ CHANGE THIS
   lastName: 'Olumah',                       // ⬅️ CHANGE THIS

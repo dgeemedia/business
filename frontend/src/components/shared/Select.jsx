@@ -1,3 +1,4 @@
+// frontend/src/components/shared/Select.jsx
 import React from 'react';
 
 const Select = React.forwardRef(({
@@ -24,7 +25,7 @@ const Select = React.forwardRef(({
       >
         <option value="">Select...</option>
         {options.map((option) => (
-          <key={option.value || option.code} value={option.value || option.code}>
+          <option key={option.value || option.code} value={option.value || option.code}>
             {option.label || option.name}
           </option>
         ))}

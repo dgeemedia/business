@@ -1,4 +1,3 @@
-// frontend/src/components/layouts/DashboardLayout.jsx
 import React, { useState, useEffect } from 'react';
 import { Outlet, NavLink, useNavigate } from 'react-router-dom';
 import { 
@@ -12,7 +11,9 @@ import {
   Menu,
   X,
   Building2,
-  ChevronDown
+  ChevronDown,
+  UserPlus,
+  Star
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
 import useAuthStore from '../../stores/authStore';
@@ -33,10 +34,13 @@ const DashboardLayout = () => {
 
   const navItems = [
     { name: 'Dashboard', path: '/dashboard', icon: LayoutDashboard },
-    { name: 'Products', path: '/products', icon: Package },
-    { name: 'Orders', path: '/orders', icon: ShoppingCart },
-    { name: 'Users', path: '/users', icon: Users },
-    { name: 'Settings', path: '/settings', icon: Settings },
+    { name: 'Products', path: '/dashboard/products', icon: Package },
+    { name: 'Orders', path: '/dashboard/orders', icon: ShoppingCart },
+    { name: 'Users', path: '/dashboard/users', icon: Users },
+    { name: 'Staff', path: '/dashboard/staff', icon: UserPlus },
+    { name: 'Reviews', path: '/dashboard/reviews', icon: Star },
+    { name: 'Requests', path: '/dashboard/requests', icon: Building2, superAdminOnly: true },
+    { name: 'Settings', path: '/dashboard/settings', icon: Settings },
   ];
 
   const handleLogout = () => {
