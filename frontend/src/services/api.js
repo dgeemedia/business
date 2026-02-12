@@ -90,38 +90,47 @@ api.interceptors.response.use(
   }
 );
 
-// frontend/src/services/api.js
 export const getSubdomain = () => {
-  // DEV: simulate subdomain via VITE_SUBDOMAIN, unless we've cleared it
-  if (import.meta.env.DEV) {
-    // Check if we've manually cleared the subdomain simulation
-    const cleared = sessionStorage.getItem('clearSubdomain') === 'true';
-    if (cleared) {
-      return null;
-    }
-    const sd = import.meta.env.VITE_SUBDOMAIN;
-    if (sd && sd !== 'null' && sd !== '') {
-      return sd;
-    }
+  const hostname = window.location.hostname;
+
+  if (!hostname) return null;
+
+  // Ignore localhost and IP addresses
+  if (
+    hostname === 'localhost' ||
+    hostname === '127.0.0.1' ||
+    /^\d+\.\d+\.\d+\.\d+$/.test(hostname)
+  ) {
     return null;
   }
 
-  // Production logic (unchanged)
-  const hostname = window.location.hostname;
-  if (!hostname) return null;
-  if (hostname === 'localhost' || hostname === '127.0.0.1') return null;
-  if (/^\d+\.\d+\.\d+\.\d+$/.test(hostname)) return null;
-
-  const parts = hostname.split('.');
-  if (parts.length >= 3) {
-    const sub = parts[0].toLowerCase();
-    const reserved = ['www', 'admin', 'app', 'api'];
-    if (reserved.includes(sub)) return null;
-    return sub;
+  // Ignore Vercel preview domains
+  if (hostname.endsWith('vercel.app')) {
+    return null;
   }
+
+  // OPTIONAL: set your real production domain here
+  const ROOT_DOMAIN = import.meta.env.VITE_ROOT_DOMAIN;
+
+  // If ROOT_DOMAIN is set (recommended for production)
+  if (ROOT_DOMAIN && hostname.endsWith(ROOT_DOMAIN)) {
+    const parts = hostname.split('.');
+
+    // tenant.mypadibusiness.com → ["tenant","mypadibusiness","com"]
+    if (parts.length >= 3) {
+      const sub = parts[0].toLowerCase();
+
+      const reserved = ['www', 'admin', 'app', 'api'];
+      if (reserved.includes(sub)) return null;
+
+      return sub;
+    }
+
+    return null;
+  }
+
   return null;
 };
-
 
 // Helper function to build full URL with subdomain
 export const buildSubdomainUrl = (subdomain) => {
