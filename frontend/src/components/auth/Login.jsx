@@ -4,13 +4,11 @@ import { useNavigate, Link } from 'react-router-dom';
 import { Mail, Lock, ArrowRight, Building2, Moon, Sun } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
 import toast from 'react-hot-toast';
-import Input from '../shared/Input';
-import Button from '../shared/Button';
 import useAuthStore from '../../stores/authStore';
 
 const Login = () => {
   const navigate = useNavigate();
-  const { login } = useAuthStore();
+  const { login, user } = useAuthStore();
   
   const [formData, setFormData] = useState({
     email: '',
@@ -75,9 +73,19 @@ const Login = () => {
     setLoading(true);
 
     try {
-      await login(formData);
+      const response = await login(formData);
       toast.success('Welcome back!');
-      navigate('/dashboard');
+      
+      // Role-based routing
+      const userRole = response.user?.role || user?.role;
+      
+      if (userRole === 'SUPER_ADMIN') {
+        navigate('/super-admin/dashboard');
+      } else if (userRole === 'ADMIN' || userRole === 'STAFF') {
+        navigate('/dashboard');
+      } else {
+        navigate('/dashboard');
+      }
     } catch (error) {
       toast.error(error.response?.data?.error || 'Login failed');
     } finally {

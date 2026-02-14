@@ -1,3 +1,4 @@
+// frontend/src/pages/Businesses.jsx
 import React, { useState, useEffect } from 'react';
 import { 
   Building2, Plus, Search, Filter, Edit, Trash2, Power, 
@@ -7,13 +8,7 @@ import {
 import { motion } from 'framer-motion';
 import { Link, useNavigate } from 'react-router-dom';
 import toast from 'react-hot-toast';
-import Card from '../../components/shared/Card';
-import Button from '../../components/shared/Button';
-import Badge from '../../components/shared/Badge';
-import Modal from '../../components/shared/Modal';
-import Input from '../../components/shared/Input';
-import LoadingSpinner from '../../components/shared/LoadingSpinner';
-import EmptyState from '../../components/shared/EmptyState';
+import { Card, Button, Badge, Modal, LoadingSpinner, EmptyState } from '../../components/shared';
 import api from '../../services/api';
 import { formatDate, formatCurrency, daysUntil, isExpired } from '../../utils/helpers';
 

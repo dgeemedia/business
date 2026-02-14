@@ -7,6 +7,7 @@ import { getSubdomain } from './services/api';
 
 // Layouts
 import DashboardLayout from './components/layouts/DashboardLayout';
+import SuperAdminLayout from './components/layouts/SuperAdminLayout';
 
 // Public Pages
 import MainLanding from './pages/public/MainLanding';
@@ -23,14 +24,27 @@ import Users from './pages/Users';
 import Staff from './pages/Staff';
 import Reviews from './pages/Reviews';
 import Settings from './pages/Settings';
+
+// Super Admin Pages
+import SuperAdminDashboard from './pages/super-admin/Dashboard';
+import SuperAdminBusinesses from './pages/super-admin/Businesses';
 import BusinessRequests from './pages/super-admin/Requests';
 
 // Protected Route Component
-const ProtectedRoute = ({ children }) => {
-  const { isAuthenticated } = useAuthStore();
+const ProtectedRoute = ({ children, requiredRole = null }) => {
+  const { isAuthenticated, user } = useAuthStore();
 
   if (!isAuthenticated) {
     return <Navigate to="/login" replace />;
+  }
+
+  // Check role if specified
+  if (requiredRole && user?.role !== requiredRole) {
+    // Redirect to appropriate dashboard based on role
+    if (user?.role === 'SUPER_ADMIN') {
+      return <Navigate to="/super-admin/dashboard" replace />;
+    }
+    return <Navigate to="/dashboard" replace />;
   }
 
   return children;
@@ -38,9 +52,13 @@ const ProtectedRoute = ({ children }) => {
 
 // Public Route Component (redirect if authenticated)
 const PublicRoute = ({ children }) => {
-  const { isAuthenticated } = useAuthStore();
+  const { isAuthenticated, user } = useAuthStore();
 
   if (isAuthenticated) {
+    // Redirect based on role
+    if (user?.role === 'SUPER_ADMIN') {
+      return <Navigate to="/super-admin/dashboard" replace />;
+    }
     return <Navigate to="/dashboard" replace />;
   }
 
@@ -108,7 +126,6 @@ function App() {
             <Route path="users" element={<Users />} />
             <Route path="staff" element={<Staff />} />
             <Route path="reviews" element={<Reviews />} />
-            <Route path="requests" element={<BusinessRequests />} />
             <Route path="settings" element={<Settings />} />
           </Route>
 
@@ -119,7 +136,7 @@ function App() {
     );
   }
 
-  // Main domain - show main landing
+  // Main domain - show main landing and super-admin routes
   return (
     <BrowserRouter>
       <Toaster
@@ -160,7 +177,22 @@ function App() {
           }
         />
 
-        {/* Protected Dashboard Routes (for super admin) */}
+        {/* Super Admin Routes */}
+        <Route
+          path="/super-admin"
+          element={
+            <ProtectedRoute requiredRole="SUPER_ADMIN">
+              <SuperAdminLayout />
+            </ProtectedRoute>
+          }
+        >
+          <Route path="dashboard" element={<SuperAdminDashboard />} />
+          <Route path="businesses" element={<SuperAdminBusinesses />} />
+          <Route path="requests" element={<BusinessRequests />} />
+          {/* Add more super-admin routes as needed */}
+        </Route>
+
+        {/* Regular Dashboard Routes (for admins/staff on main domain) */}
         <Route
           path="/dashboard"
           element={

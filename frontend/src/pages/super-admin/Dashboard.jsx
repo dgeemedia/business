@@ -1,3 +1,4 @@
+// frontend/src/pages/super-admin/Dashboard.jsx
 import React, { useState, useEffect } from 'react';
 import { 
   Building2, TrendingUp, Users, DollarSign, Package, 
