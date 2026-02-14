@@ -1,4 +1,4 @@
-// frontend/src/services/api.js - FIXED SUBDOMAIN DETECTION
+// frontend/src/services/api.js
 import axios from 'axios';
 import toast from 'react-hot-toast';
 
