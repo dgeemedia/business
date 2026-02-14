@@ -1,4 +1,4 @@
-// frontend/src/App.jsx
+// frontend/src/App.jsx - COMPLETE WITH ALL ROUTES
 import React from 'react';
 import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom';
 import { Toaster } from 'react-hot-toast';
@@ -16,7 +16,7 @@ import BusinessStorefront from './pages/public/BusinessStorefront';
 // Auth Pages
 import Login from './components/auth/Login';
 
-// Dashboard Pages
+// Business Dashboard Pages
 import Dashboard from './pages/Dashboard';
 import Products from './pages/Products';
 import Orders from './pages/Orders';
@@ -29,6 +29,9 @@ import Settings from './pages/Settings';
 import SuperAdminDashboard from './pages/super-admin/Dashboard';
 import SuperAdminBusinesses from './pages/super-admin/Businesses';
 import BusinessRequests from './pages/super-admin/Requests';
+import SuperAdminSettings from './pages/super-admin/Settings';
+import SuperAdminUsers from './pages/super-admin/Users';
+import SuperAdminAnalytics from './pages/super-admin/Analytics';
 
 // Protected Route Component
 const ProtectedRoute = ({ children, requiredRole = null }) => {
@@ -38,7 +41,7 @@ const ProtectedRoute = ({ children, requiredRole = null }) => {
     return <Navigate to="/login" replace />;
   }
 
-  // Check role if specified
+  // Check role if specified (use lowercase 'super-admin')
   if (requiredRole && user?.role !== requiredRole) {
     // Redirect to appropriate dashboard based on role
     if (user?.role === 'super-admin') {
@@ -55,7 +58,7 @@ const PublicRoute = ({ children }) => {
   const { isAuthenticated, user } = useAuthStore();
 
   if (isAuthenticated) {
-    // Redirect based on role
+    // Redirect based on role (use lowercase 'super-admin')
     if (user?.role === 'super-admin') {
       return <Navigate to="/super-admin/dashboard" replace />;
     }
@@ -188,8 +191,13 @@ function App() {
         >
           <Route path="dashboard" element={<SuperAdminDashboard />} />
           <Route path="businesses" element={<SuperAdminBusinesses />} />
+          <Route path="businesses/create" element={<SuperAdminBusinesses />} />
           <Route path="requests" element={<BusinessRequests />} />
-          {/* Add more super-admin routes as needed */}
+          <Route path="settings" element={<SuperAdminSettings />} />
+          <Route path="users" element={<SuperAdminUsers />} />
+          <Route path="admins" element={<SuperAdminUsers />} />
+          <Route path="analytics" element={<SuperAdminAnalytics />} />
+          <Route path="subscriptions" element={<SuperAdminBusinesses />} />
         </Route>
 
         {/* Regular Dashboard Routes (for admins/staff on main domain) */}

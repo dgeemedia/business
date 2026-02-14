@@ -30,6 +30,7 @@ app.use('/uploads', express.static(path.join(__dirname, '../uploads')));
 // ROUTES
 // ============================================================================
 
+app.use('/api/stats', require('./routes/stats'))
 // Authentication routes
 app.use('/api/auth', require('./routes/auth'));
 

@@ -1,4 +1,4 @@
-// frontend/src/pages/Businesses.jsx
+// frontend/src/pages/super-admin/Businesses.jsx - FIXED IMPORTS
 import React, { useState, useEffect } from 'react';
 import { 
   Building2, Plus, Search, Filter, Edit, Trash2, Power, 
@@ -8,7 +8,7 @@ import {
 import { motion } from 'framer-motion';
 import { Link, useNavigate } from 'react-router-dom';
 import toast from 'react-hot-toast';
-import { Card, Button, Badge, Modal, LoadingSpinner, EmptyState } from '../../components/shared';
+import { Card, Button, Badge, Modal, LoadingSpinner, EmptyState, Input } from '../../components/shared';
 import api from '../../services/api';
 import { formatDate, formatCurrency, daysUntil, isExpired } from '../../utils/helpers';
 

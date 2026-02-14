@@ -1,4 +1,4 @@
-// frontend/src/pages/super-admin/Dashboard.jsx
+// frontend/src/pages/super-admin/Dashboard.jsx - FIXED VERSION
 import React, { useState, useEffect } from 'react';
 import { 
   Building2, TrendingUp, Users, DollarSign, Package, 
@@ -7,9 +7,7 @@ import {
 } from 'lucide-react';
 import { motion } from 'framer-motion';
 import { Link } from 'react-router-dom';
-import Card from '../../components/shared/Card';
-import Badge from '../../components/shared/Badge';
-import LoadingSpinner from '../../components/shared/LoadingSpinner';
+import { Card, Badge, LoadingSpinner } from '../../components/shared';
 import api from '../../services/api';
 import { formatCurrency, formatDate, daysUntil } from '../../utils/helpers';
 
@@ -26,19 +24,13 @@ const SuperAdminDashboard = () => {
   const fetchDashboardData = async () => {
     try {
       setLoading(true);
-      const [statsRes, businessesRes, expiringRes, requestsRes] = await Promise.all([
+      const [statsRes, businessesRes, expiringRes] = await Promise.all([
         api.get('/api/stats/super-admin'),
         api.get('/api/business?limit=5&sort=recent'),
-        api.get('/api/business/expiring?days=7'),
-        api.get('/api/onboarding/requests?status=pending').catch(() => ({ data: [] }))
+        api.get('/api/business/expiring?days=7')
       ]);
       
-      setStats({
-        ...statsRes.data,
-        pendingRequests: Array.isArray(requestsRes.data) 
-          ? requestsRes.data.filter(r => r.status === 'pending').length 
-          : requestsRes.data.filter(r => r.status === 'pending').length || 0
-      });
+      setStats(statsRes.data);
       setBusinesses(businessesRes.data.businesses || []);
       setExpiringSubscriptions(expiringRes.data.businesses || []);
     } catch (error) {
@@ -137,7 +129,7 @@ const SuperAdminDashboard = () => {
           </p>
         </div>
         <Link to="/super-admin/businesses/create">
-          <button className="btn btn-primary">
+          <button className="btn btn-primary flex items-center gap-2">
             <Building2 className="w-5 h-5" />
             <span>Create Business</span>
           </button>
