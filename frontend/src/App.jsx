@@ -41,7 +41,7 @@ const ProtectedRoute = ({ children, requiredRole = null }) => {
   // Check role if specified
   if (requiredRole && user?.role !== requiredRole) {
     // Redirect to appropriate dashboard based on role
-    if (user?.role === 'SUPER_ADMIN') {
+    if (user?.role === 'super-admin') {
       return <Navigate to="/super-admin/dashboard" replace />;
     }
     return <Navigate to="/dashboard" replace />;
@@ -56,7 +56,7 @@ const PublicRoute = ({ children }) => {
 
   if (isAuthenticated) {
     // Redirect based on role
-    if (user?.role === 'SUPER_ADMIN') {
+    if (user?.role === 'super-admin') {
       return <Navigate to="/super-admin/dashboard" replace />;
     }
     return <Navigate to="/dashboard" replace />;
@@ -181,7 +181,7 @@ function App() {
         <Route
           path="/super-admin"
           element={
-            <ProtectedRoute requiredRole="SUPER_ADMIN">
+            <ProtectedRoute requiredRole="super-admin">
               <SuperAdminLayout />
             </ProtectedRoute>
           }

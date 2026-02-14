@@ -1,4 +1,4 @@
-// frontend/src/services/api.js
+// frontend/src/services/api.js - FIXED SUBDOMAIN DETECTION
 import axios from 'axios';
 import toast from 'react-hot-toast';
 
@@ -90,33 +90,62 @@ api.interceptors.response.use(
   }
 );
 
+/**
+ * ✅ FIXED: Proper subdomain detection for both localhost and production
+ */
 export const getSubdomain = () => {
   const hostname = window.location.hostname;
 
   if (!hostname) return null;
 
-  // Ignore localhost and IP addresses
-  if (
-    hostname === 'localhost' ||
-    hostname === '127.0.0.1' ||
-    /^\d+\.\d+\.\d+\.\d+$/.test(hostname)
-  ) {
+  // ============================================================================
+  // LOCALHOST HANDLING
+  // ============================================================================
+  // For development: business.localhost:3000
+  if (hostname.includes('localhost')) {
+    const parts = hostname.split('.');
+    
+    // If just "localhost" with no subdomain → main domain
+    if (parts.length === 1) {
+      return null; // This is the main domain
+    }
+    
+    // If "business.localhost" → has subdomain
+    if (parts.length === 2 && parts[1] === 'localhost') {
+      const sub = parts[0].toLowerCase();
+      const reserved = ['www', 'admin', 'app', 'api'];
+      if (reserved.includes(sub)) return null;
+      return sub; // Return the subdomain
+    }
+    
     return null;
   }
 
+  // ============================================================================
+  // IP ADDRESS HANDLING
+  // ============================================================================
+  // Ignore IP addresses
+  if (/^\d+\.\d+\.\d+\.\d+$/.test(hostname)) {
+    return null;
+  }
+
+  // ============================================================================
+  // VERCEL PREVIEW DOMAINS
+  // ============================================================================
   // Ignore Vercel preview domains
   if (hostname.endsWith('vercel.app')) {
     return null;
   }
 
-  // OPTIONAL: set your real production domain here
-  const ROOT_DOMAIN = import.meta.env.VITE_ROOT_DOMAIN;
+  // ============================================================================
+  // PRODUCTION HANDLING
+  // ============================================================================
+  const ROOT_DOMAIN = import.meta.env.VITE_ROOT_DOMAIN || 'mypadibusiness.com';
 
-  // If ROOT_DOMAIN is set (recommended for production)
-  if (ROOT_DOMAIN && hostname.endsWith(ROOT_DOMAIN)) {
+  if (hostname.endsWith(ROOT_DOMAIN)) {
     const parts = hostname.split('.');
 
-    // tenant.mypadibusiness.com → ["tenant","mypadibusiness","com"]
+    // business.mypadibusiness.com → ["business", "mypadibusiness", "com"]
     if (parts.length >= 3) {
       const sub = parts[0].toLowerCase();
 
@@ -126,7 +155,7 @@ export const getSubdomain = () => {
       return sub;
     }
 
-    return null;
+    return null; // Just mypadibusiness.com (no subdomain)
   }
 
   return null;

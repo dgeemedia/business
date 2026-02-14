@@ -5,6 +5,7 @@ import { Mail, Lock, ArrowRight, Building2, Moon, Sun } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
 import toast from 'react-hot-toast';
 import useAuthStore from '../../stores/authStore';
+import { getSubdomain } from '../../services/api';
 
 const Login = () => {
   const navigate = useNavigate();
@@ -17,6 +18,9 @@ const Login = () => {
   const [loading, setLoading] = useState(false);
   const [darkMode, setDarkMode] = useState(false);
   const [currentVideoIndex, setCurrentVideoIndex] = useState(0);
+
+  const subdomain = getSubdomain();
+  const isMainDomain = !subdomain || subdomain === 'www';
 
   // Business showcase with 20 real Pexels images
   const businessShowcase = [
@@ -74,20 +78,47 @@ const Login = () => {
 
     try {
       const response = await login(formData);
+      const userRole = response.user?.role || user?.role;
+      const contextBusinessId = response.user?.contextBusinessId;
+      
       toast.success('Welcome back!');
       
-      // Role-based routing
-      const userRole = response.user?.role || user?.role;
+      // ====================================================================
+      // ROUTING LOGIC BASED ON DOMAIN AND ROLE
+      // ====================================================================
       
-      if (userRole === 'SUPER_ADMIN') {
-        navigate('/super-admin/dashboard');
-      } else if (userRole === 'ADMIN' || userRole === 'STAFF') {
-        navigate('/dashboard');
+      if (isMainDomain) {
+        // Main domain - only super-admins should reach here
+        if (userRole === 'super-admin') {
+          navigate('/super-admin/dashboard');
+        } else {
+          // This shouldn't happen due to backend validation, but just in case
+          toast.error('Please log in at your business subdomain');
+          navigate('/');
+        }
       } else {
-        navigate('/dashboard');
+        // Subdomain - business users OR super-admin accessing a business
+        if (userRole === 'super-admin') {
+          // Super-admin accessing a business subdomain - go to business dashboard
+          navigate('/dashboard');
+        } else {
+          // Regular admin/staff - go to business dashboard
+          navigate('/dashboard');
+        }
       }
     } catch (error) {
-      toast.error(error.response?.data?.error || 'Login failed');
+      const errorMessage = error.response?.data?.error || 'Login failed';
+      const redirectUrl = error.response?.data?.redirectUrl;
+      
+      if (redirectUrl) {
+        toast.error(errorMessage);
+        // Optional: Auto-redirect to correct subdomain after 3 seconds
+        setTimeout(() => {
+          window.location.href = redirectUrl;
+        }, 3000);
+      } else {
+        toast.error(errorMessage);
+      }
     } finally {
       setLoading(false);
     }
@@ -108,7 +139,6 @@ const Login = () => {
             transition={{ duration: 1.2 }}
             className="absolute inset-0"
           >
-            {/* Background Image */}
             <div 
               className="absolute inset-0 bg-cover bg-center"
               style={{
@@ -116,7 +146,6 @@ const Login = () => {
               }}
             />
             
-            {/* Overlay for readability */}
             <div className={`absolute inset-0 ${
               darkMode 
                 ? 'bg-gradient-to-b from-black/80 via-black/75 to-black/85' 
@@ -126,7 +155,7 @@ const Login = () => {
         </AnimatePresence>
       </div>
 
-      {/* Theme Toggle - Fixed Position */}
+      {/* Theme Toggle */}
       <motion.button
         onClick={() => setDarkMode(!darkMode)}
         className={`fixed top-6 right-6 z-50 p-3 rounded-xl transition-all shadow-lg ${
@@ -159,10 +188,12 @@ const Login = () => {
             <Building2 className="w-8 h-8 text-white" />
           </motion.div>
           <h1 className="text-3xl font-bold text-white mb-2 drop-shadow-lg">
-            Welcome Back
+            {isMainDomain ? 'Super Admin Login' : 'Business Login'}
           </h1>
           <p className="text-white/80 drop-shadow-md">
-            Sign in to manage your business
+            {isMainDomain 
+              ? 'Platform administration access' 
+              : 'Sign in to manage your business'}
           </p>
         </div>
 
@@ -271,23 +302,25 @@ const Login = () => {
             </motion.button>
           </form>
 
-          <div className="mt-6 text-center">
-            <p className={`text-sm ${darkMode ? 'text-gray-400' : 'text-gray-600'}`}>
-              Don't have an account?{' '}
-              <Link 
-                to="/register" 
-                className="text-orange-400 hover:text-orange-300 font-semibold transition-colors"
-              >
-                Sign up
-              </Link>
-            </p>
-          </div>
+          {!isMainDomain && (
+            <div className="mt-6 text-center">
+              <p className={`text-sm ${darkMode ? 'text-gray-400' : 'text-gray-600'}`}>
+                Need help?{' '}
+                <a 
+                  href="mailto:support@mypadibusiness.com" 
+                  className="text-orange-400 hover:text-orange-300 font-semibold transition-colors"
+                >
+                  Contact Support
+                </a>
+              </p>
+            </div>
+          )}
         </motion.div>
 
         {/* Footer */}
         <div className="mt-6 text-center text-sm text-white/60">
           <p>
-            © 2024 MyPadiBusiness. All rights reserved.
+            © 2026 MyPadiBusiness. All rights reserved.
           </p>
         </div>
       </motion.div>

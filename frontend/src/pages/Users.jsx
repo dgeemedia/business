@@ -1,14 +1,9 @@
+// frontend/src/pages/Users.jsx
 import React, { useState, useEffect } from 'react';
 import { Users as UsersIcon, Plus, Edit, Trash2, UserCheck, UserX, Search } from 'lucide-react';
 import { motion } from 'framer-motion';
 import toast from 'react-hot-toast';
-import Card from '../components/shared/Card';
-import Button from '../components/shared/Button';
-import Modal from '../components/shared/Modal';
-import Input from '../components/shared/Input';
-import Badge from '../components/shared/Badge';
-import LoadingSpinner from '../components/shared/LoadingSpinner';
-import EmptyState from '../components/shared/EmptyState';
+import { Card, Button, Badge, Modal, LoadingSpinner, EmptyState } from '../components/shared';
 import api from '../services/api';
 import { formatDate, getInitials } from '../utils/helpers';
 
@@ -23,7 +18,7 @@ const Users = () => {
     name: '',
     email: '',
     phone: '',
-    role: 'STAFF',
+    role: 'staff',
     password: '',
   });
 
@@ -102,7 +97,7 @@ const Users = () => {
       name: '',
       email: '',
       phone: '',
-      role: 'STAFF',
+      role: 'staff',
       password: '',
     });
   };

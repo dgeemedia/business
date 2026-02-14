@@ -1,10 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { Save, Building2, DollarSign, Globe, Bell, Shield, Palette } from 'lucide-react';
 import toast from 'react-hot-toast';
-import Card from '../components/shared/Card';
-import Button from '../components/shared/Button';
-import Input from '../components/shared/Input';
-import LoadingSpinner from '../components/shared/LoadingSpinner';
+import { Card, Button, LoadingSpinner } from '../components/shared';
 import useBusinessStore from '../stores/businessStore';
 import api from '../services/api';
 

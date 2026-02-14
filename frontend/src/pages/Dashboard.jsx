@@ -11,9 +11,7 @@ import {
   XCircle
 } from 'lucide-react';
 import { motion } from 'framer-motion';
-import Card from '../components/shared/Card';
-import Badge from '../components/shared/Badge';
-import LoadingSpinner from '../components/shared/LoadingSpinner';
+import { Card, Badge, LoadingSpinner } from '../components/shared';
 import orderService from '../services/orderService';
 import { formatCurrency, formatRelativeTime } from '../utils/helpers';
 

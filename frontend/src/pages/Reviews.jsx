@@ -2,11 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { Star, Search, Filter } from 'lucide-react';
 import { motion } from 'framer-motion';
 import toast from 'react-hot-toast';
-import Card from '../components/shared/Card';
-import Input from '../components/shared/Input';
-import Badge from '../components/shared/Badge';
-import LoadingSpinner from '../components/shared/LoadingSpinner';
-import EmptyState from '../components/shared/EmptyState';
+import { Card, Badge, LoadingSpinner, EmptyState } from '../components/shared';
 import api from '../services/api';
 import { formatDate, formatRelativeTime } from '../utils/helpers';
 

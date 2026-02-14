@@ -80,12 +80,12 @@ const useAuthStore = create((set, get) => ({
 
   isAdmin: () => {
     const user = get().user;
-    return user?.role === 'ADMIN' || user?.role === 'SUPER_ADMIN';
+    return user?.role === 'admin' || user?.role === 'super-admin';
   },
 
   isSuperAdmin: () => {
     const user = get().user;
-    return user?.role === 'SUPER_ADMIN';
+    return user?.role === 'super-admin';
   },
 }));
 

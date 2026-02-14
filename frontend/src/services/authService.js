@@ -48,13 +48,13 @@ const authService = {
 
   // Check if super admin
   isSuperAdmin: () => {
-    return authService.getUserRole() === 'SUPER_ADMIN';
+    return authService.getUserRole() === 'super-admin';
   },
 
   // Check if admin
   isAdmin: () => {
     const role = authService.getUserRole();
-    return role === 'ADMIN' || role === 'SUPER_ADMIN';
+    return role === 'admin' || role === 'super-admin';
   },
 
   // Refresh user data

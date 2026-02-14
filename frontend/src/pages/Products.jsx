@@ -2,13 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { Plus, Edit, Trash2, Eye, EyeOff, Image as ImageIcon, Search, Filter } from 'lucide-react';
 import { motion } from 'framer-motion';
 import toast from 'react-hot-toast';
-import Card from '../components/shared/Card';
-import Button from '../components/shared/Button';
-import Modal from '../components/shared/Modal';
-import Input from '../components/shared/Input';
-import Badge from '../components/shared/Badge';
-import LoadingSpinner from '../components/shared/LoadingSpinner';
-import EmptyState from '../components/shared/EmptyState';
+import { Card, Button, Badge, Modal, LoadingSpinner, EmptyState } from '../components/shared';
 import productService from '../services/productService';
 import { formatCurrency } from '../utils/helpers';
 
