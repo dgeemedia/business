@@ -29,17 +29,21 @@ const MainLanding = () => {
     description: '',
   });
 
-  // Hidden super admin login tracker
+  // Hidden super admin login tracker - Desktop (5 clicks)
   const [clickCount, setClickCount] = useState(0);
   const [lastClickTime, setLastClickTime] = useState(0);
 
-  // Keyboard shortcut for super admin login
+  // Mobile-friendly triple tap for admin login
+  const [tapSequence, setTapSequence] = useState([]);
+  const [lastTapTime, setLastTapTime] = useState(0);
+
+  // Keyboard shortcut for super admin login (Desktop)
   useEffect(() => {
     const handleKeyPress = (e) => {
       // Ctrl+Shift+A for super admin login
       if (e.ctrlKey && e.shiftKey && e.key.toLowerCase() === 'a') {
         e.preventDefault();
-        navigate('/login');
+        window.open('/login', '_blank');
       }
     };
 
@@ -122,19 +126,48 @@ const MainLanding = () => {
     return () => clearInterval(interval);
   }, []);
 
-  // Hidden super admin login
+  // Hidden super admin login - Desktop (5 rapid clicks on logo)
   const handleLogoClick = () => {
     const now = Date.now();
     if (now - lastClickTime < 500) {
       setClickCount(prev => prev + 1);
       if (clickCount + 1 >= 5) {
-        navigate('/login');
+        window.open('/login', '_blank');
         setClickCount(0);
       }
     } else {
       setClickCount(1);
     }
     setLastClickTime(now);
+  };
+
+  // Mobile-friendly triple tap on footer for admin login
+  const handleSecretTap = () => {
+    const now = Date.now();
+    
+    // Reset if more than 2 seconds between taps
+    if (now - lastTapTime > 2000) {
+      setTapSequence([]);
+    }
+    
+    const newSequence = [...tapSequence, now];
+    setTapSequence(newSequence);
+    setLastTapTime(now);
+    
+    // Check for pattern: 3 quick taps (within 1.5 seconds)
+    if (newSequence.length >= 3) {
+      const timeDiff = newSequence[2] - newSequence[0];
+      if (timeDiff < 1500) {
+        window.open('/login', '_blank');
+        setTapSequence([]);
+        return;
+      }
+    }
+    
+    // Clean up old taps
+    if (newSequence.length > 5) {
+      setTapSequence(newSequence.slice(-3));
+    }
   };
 
   const fetchBusinesses = async () => {
@@ -219,7 +252,7 @@ const MainLanding = () => {
         <nav className="max-w-7xl mx-auto px-6 lg:px-8">
           <div className="flex items-center justify-between h-20">
             
-            {/* Logo - Hidden Super Admin Click */}
+            {/* Logo - Hidden Super Admin Click (Desktop - 5 rapid clicks) */}
             <motion.div 
               onClick={handleLogoClick}
               className="flex items-center gap-3 cursor-pointer select-none"
@@ -492,6 +525,8 @@ const MainLanding = () => {
                 <motion.a
                   key={business.id}
                   href={`/?subdomain=${business.slug}`}
+                  target="_blank"
+                  rel="noopener noreferrer"
                   initial={{ opacity: 0, y: 20 }}
                   whileInView={{ opacity: 1, y: 0 }}
                   viewport={{ once: true }}
@@ -583,7 +618,7 @@ const MainLanding = () => {
         </div>
       </section>
 
-      {/* Footer */}
+      {/* Footer with Mobile Secret Tap */}
       <footer className={`py-16 px-6 ${darkMode ? 'bg-gray-950 border-t border-white/10' : 'bg-gray-900'}`}>
         <div className="max-w-7xl mx-auto">
           <div className="grid grid-cols-1 md:grid-cols-3 gap-12 mb-12">
@@ -626,8 +661,12 @@ const MainLanding = () => {
             </div>
           </div>
 
-          <div className="border-t border-white/10 pt-8 text-center">
-            <p className="text-gray-500 text-sm">
+          {/* Mobile Secret Tap Area - Triple tap for admin login */}
+          <div 
+            className="border-t border-white/10 pt-8 text-center"
+            onClick={handleSecretTap}
+          >
+            <p className="text-gray-500 text-sm select-none">
               © 2024 MyPadiBusiness. All rights reserved.
             </p>
           </div>
