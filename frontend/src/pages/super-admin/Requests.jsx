@@ -1,15 +1,11 @@
+// frontend/src/pages/super-admin/Requests.jsx
 import React, { useState, useEffect } from 'react';
 import { CheckCircle, XCircle, Clock, Building2, Mail, Phone, User, Eye, Filter } from 'lucide-react';
 import { motion } from 'framer-motion';
 import toast from 'react-hot-toast';
-import Card from '../components/shared/Card';
-import Button from '../components/shared/Button';
-import Badge from '../components/shared/Badge';
-import Modal from '../components/shared/Modal';
-import LoadingSpinner from '../components/shared/LoadingSpinner';
-import EmptyState from '../components/shared/EmptyState';
-import api from '../services/api';
-import { formatDate, formatRelativeTime } from '../utils/helpers';
+import { Card, Button, Badge, Modal, LoadingSpinner, EmptyState } from '../../components/shared';
+import api from '../../services/api';
+import { formatDate, formatRelativeTime } from '../../utils/helpers';
 
 const BusinessRequests = () => {
   const [requests, setRequests] = useState([]);
@@ -25,8 +21,8 @@ const BusinessRequests = () => {
   const fetchRequests = async () => {
     try {
       setLoading(true);
-      const response = await api.get('/api/business/requests');
-      setRequests(response.data.requests || []);
+      const response = await api.get('/api/onboarding/requests');
+      setRequests(response.data || []);
     } catch (error) {
       toast.error('Failed to load requests');
     } finally {
@@ -38,7 +34,7 @@ const BusinessRequests = () => {
     if (!confirm('Are you sure you want to approve this business?')) return;
     
     try {
-      await api.post(`/api/business/requests/${id}/approve`);
+      await api.post(`/api/onboarding/requests/${id}/approve`);
       toast.success('Business approved successfully!');
       fetchRequests();
       setDetailsModalOpen(false);
@@ -51,7 +47,7 @@ const BusinessRequests = () => {
     const reason = prompt('Reason for rejection (optional):');
     
     try {
-      await api.post(`/api/business/requests/${id}/reject`, { reason });
+      await api.post(`/api/onboarding/requests/${id}/reject`, { reason });
       toast.success('Business rejected');
       fetchRequests();
       setDetailsModalOpen(false);

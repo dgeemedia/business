@@ -39,7 +39,6 @@ const DashboardLayout = () => {
     { name: 'Users', path: '/dashboard/users', icon: Users },
     { name: 'Staff', path: '/dashboard/staff', icon: UserPlus },
     { name: 'Reviews', path: '/dashboard/reviews', icon: Star },
-    { name: 'Requests', path: '/dashboard/requests', icon: Building2, superAdminOnly: true },
     { name: 'Settings', path: '/dashboard/settings', icon: Settings },
   ];
 

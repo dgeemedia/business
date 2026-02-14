@@ -1,4 +1,4 @@
-//
+// frontend/src/services/staffService.js
 import api from './api';
 
 const staffService = {

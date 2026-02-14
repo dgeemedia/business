@@ -23,7 +23,7 @@ import Users from './pages/Users';
 import Staff from './pages/Staff';
 import Reviews from './pages/Reviews';
 import Settings from './pages/Settings';
-import BusinessRequests from './pages/BusinessRequests';
+import BusinessRequests from './pages/super-admin/Requests';
 
 // Protected Route Component
 const ProtectedRoute = ({ children }) => {

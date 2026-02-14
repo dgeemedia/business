@@ -1,3 +1,4 @@
+// frontend/src/utils/helpers.js
 // Format currency
 export const formatCurrency = (amount, currency = 'NGN') => {
   const currencies = {
