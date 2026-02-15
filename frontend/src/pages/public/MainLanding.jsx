@@ -1,3 +1,4 @@
+// frontend/src/pages/public/MainLanding.jsx
 import React, { useState, useEffect, useRef } from 'react';
 import { 
   Search, Store, ArrowRight, Moon, Sun, Globe, 
