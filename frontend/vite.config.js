@@ -11,14 +11,19 @@ export default defineConfig({
     },
   },
   server: {
+    host: '127.0.0.1',        // ← bind to loopback, not just 'localhost'
     port: 3000,
+    allowedHosts: [
+      'localhost',
+      '.localhost',             // ← allows ANY *.localhost subdomain
+    ],
     proxy: {
       '/api': {
-        target: process.env.VITE_API_URL || 'http://localhost:5000',
+        target: 'http://localhost:5000',
         changeOrigin: true,
       },
       '/uploads': {
-        target: process.env.VITE_API_URL || 'http://localhost:5000',
+        target: 'http://localhost:5000',
         changeOrigin: true,
       },
     },

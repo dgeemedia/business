@@ -32,6 +32,8 @@ import BusinessRequests from './pages/super-admin/Requests';
 import SuperAdminSettings from './pages/super-admin/Settings';
 import SuperAdminUsers from './pages/super-admin/Users';
 import SuperAdminAnalytics from './pages/super-admin/Analytics';
+import SuperAdminBusinessDetail from './pages/super-admin/BusinessDetail';
+import SuperAdminBusinessSubscription from './pages/super-admin/BusinessSubscription';
 
 // Protected Route Component
 const ProtectedRoute = ({ children, requiredRole = null }) => {
@@ -192,6 +194,10 @@ function App() {
           <Route path="dashboard" element={<SuperAdminDashboard />} />
           <Route path="businesses" element={<SuperAdminBusinesses />} />
           <Route path="businesses/create" element={<SuperAdminBusinesses />} />
+          
+          <Route path="businesses/:id" element={<SuperAdminBusinessDetail />} />
+          <Route path="businesses/:id/subscription" element={<SuperAdminBusinessSubscription />} />
+
           <Route path="requests" element={<BusinessRequests />} />
           <Route path="settings" element={<SuperAdminSettings />} />
           <Route path="users" element={<SuperAdminUsers />} />

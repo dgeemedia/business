@@ -33,7 +33,7 @@ async function extractSubdomain(req, res, next) {
     console.log(`🔍 Extracting subdomain from: ${hostname}`);
 
     // Allow explicit override header
-    const headerSlug = req.get('X-Business-Slug');
+    const headerSlug = req.get('X-Business-Subdomain');
     const parsedSlug = parseSlugFromHostname(hostname);
     const slug = headerSlug || parsedSlug;
 

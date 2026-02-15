@@ -1,5 +1,4 @@
-// backend/src/server.js - UPDATED WITH SUBSCRIPTION MANAGEMENT
-require('dotenv').config();
+// backend/src/server.js
 const express = require('express');
 const cors = require('cors');
 const path = require('path');
@@ -14,13 +13,57 @@ const onboardingRoutes = require('./routes/onboarding');
 const app = express();
 
 // ============================================================================
-// MIDDLEWARE
+// CORS CONFIGURATION
+// Supports:
+//   DEV  → http://localhost:*  and  http://*.localhost:*
+//   PROD → https://mypadifood.com  and  https://*.mypadifood.com
 // ============================================================================
-app.use(cors());
+const PROD_DOMAIN = 'mypadifood.com';
+
+const allowedOriginPatterns = [
+  // Dev: plain localhost (any port)
+  /^http:\/\/localhost(:\d+)?$/,
+  // Dev: any *.localhost subdomain (any port) — e.g. gee-store.localhost:3000
+  /^http:\/\/[a-z0-9-]+\.localhost(:\d+)?$/,
+  // Prod: root domain (www or bare)
+  /^https:\/\/(www\.)?mypadifood\.com$/,
+  // Prod: any subdomain — e.g. gee-store.mypadifood.com
+  /^https:\/\/[a-z0-9-]+\.mypadifood\.com$/,
+];
+
+app.use(cors({
+  origin: function (origin, callback) {
+    // Allow requests with no Origin header (Postman, curl, server-to-server)
+    if (!origin) return callback(null, true);
+
+    const isAllowed = allowedOriginPatterns.some(pattern => pattern.test(origin));
+
+    if (isAllowed) {
+      return callback(null, true);
+    }
+
+    console.warn(`🚫 CORS blocked origin: ${origin}`);
+    return callback(new Error(`CORS policy: origin "${origin}" is not allowed`));
+  },
+  credentials: true,          // Required for Authorization / Cookie headers
+  methods: ['GET', 'POST', 'PUT', 'PATCH', 'DELETE', 'OPTIONS'],
+  allowedHeaders: [
+    'Content-Type',
+    'Authorization',
+    'X-Business-Subdomain',   // Used by frontend api.js to pass slug through proxy
+    'X-Requested-With',
+  ],
+  // Cache preflight response for 10 minutes
+  optionsSuccessStatus: 204,
+  maxAge: 600,
+}));
+
+// ============================================================================
+// CORE MIDDLEWARE
+// ============================================================================
 app.use(express.json());
 
 // 🔥 CRITICAL: Extract subdomain/business context BEFORE routes
-// This must come before all other routes
 app.use(extractSubdomain);
 
 // Serve uploaded files statically
@@ -30,11 +73,12 @@ app.use('/uploads', express.static(path.join(__dirname, '../uploads')));
 // ROUTES
 // ============================================================================
 
-app.use('/api/stats', require('./routes/stats'))
+app.use('/api/stats', require('./routes/stats'));
+
 // Authentication routes
 app.use('/api/auth', require('./routes/auth'));
 
-// Business routes (NEW - for multi-tenant management)
+// Business routes (multi-tenant management)
 app.use('/api/business', require('./routes/business'));
 
 // Product routes (admin - authenticated)
@@ -69,16 +113,16 @@ app.use('/api/onboarding', onboardingRoutes);
 // ============================================================================
 
 // Manual subscription check trigger (super-admin only)
-app.post('/api/admin/check-subscriptions', 
-  authMiddleware, 
-  requireSuperAdmin, 
+app.post('/api/admin/check-subscriptions',
+  authMiddleware,
+  requireSuperAdmin,
   asyncHandler(async (req, res) => {
     console.log('🔔 MANUAL SUBSCRIPTION CHECK TRIGGERED by', req.user.email);
     const result = await runSubscriptionCheck();
     res.json({
       ok: true,
       message: 'Subscription check completed',
-      result
+      result,
     });
   })
 );
@@ -87,10 +131,10 @@ app.post('/api/admin/check-subscriptions',
 // HEALTH CHECK
 // ============================================================================
 app.get('/health', (req, res) => {
-  res.json({ 
+  res.json({
     status: 'ok',
     timestamp: new Date().toISOString(),
-    environment: process.env.NODE_ENV || 'development'
+    environment: process.env.NODE_ENV || 'development',
   });
 });
 
@@ -105,25 +149,22 @@ app.get('/api', (req, res) => {
       'Role-based access control',
       'Business isolation',
       'Subscription management',
-      'Auto-suspension system'
-    ]
+      'Auto-suspension system',
+    ],
   });
 });
 
 // ============================================================================
-// ERROR HANDLER
+// GLOBAL ERROR HANDLER
 // ============================================================================
 app.use((err, req, res, next) => {
   console.error('❌ Error:', err);
-  
-  // Don't expose internal errors in production
-  const message = process.env.NODE_ENV === 'production' 
-    ? 'Something went wrong' 
-    : err.message;
-  
+
+  const isProd = process.env.NODE_ENV === 'production';
+
   res.status(err.statusCode || 500).json({
-    error: message,
-    ...(process.env.NODE_ENV !== 'production' && { stack: err.stack })
+    error: isProd ? 'Something went wrong' : err.message,
+    ...(!isProd && { stack: err.stack }),
   });
 });
 
@@ -132,44 +173,39 @@ app.use((err, req, res, next) => {
 // ============================================================================
 
 if (process.env.NODE_ENV !== 'test') {
-  // Schedule notification cleanup to run every day at 2 AM
+  // Notification cleanup — daily at 2 AM Lagos time
   cron.schedule('0 2 * * *', async () => {
     console.log('⏰ Running scheduled notification cleanup...');
     try {
       const deletedCount = await cleanupOldNotifications(90);
-      console.log(`✅ Scheduled cleanup completed. Deleted ${deletedCount} notifications.`);
+      console.log(`✅ Cleanup done. Deleted ${deletedCount} notifications.`);
     } catch (error) {
       console.error('❌ Scheduled cleanup failed:', error);
     }
-  }, {
-    timezone: "Africa/Lagos"
-  });
+  }, { timezone: 'Africa/Lagos' });
 
-  // ✅ NEW: Schedule subscription check to run every day at midnight
+  // Subscription expiry check — daily at midnight Lagos time
   cron.schedule('0 0 * * *', async () => {
     console.log('\n🔔 RUNNING SCHEDULED SUBSCRIPTION CHECK');
     try {
       const result = await runSubscriptionCheck();
-      console.log(`✅ Subscription check completed. Suspended ${result.suspended} businesses.`);
+      console.log(`✅ Subscription check done. Suspended ${result.suspended} businesses.`);
     } catch (error) {
       console.error('❌ Subscription check failed:', error);
     }
-  }, {
-    timezone: "Africa/Lagos"
-  });
+  }, { timezone: 'Africa/Lagos' });
 
   console.log('✅ Cron jobs scheduled:');
-  console.log('   - Notification cleanup: Daily at 2:00 AM');
-  console.log('   - Subscription check: Daily at midnight');
+  console.log('   - Notification cleanup : Daily at 2:00 AM (Africa/Lagos)');
+  console.log('   - Subscription check   : Daily at midnight (Africa/Lagos)');
 
-  // Optional: Run subscription check on server startup (5 seconds after start)
-  // Uncomment if you want to catch expired subscriptions immediately after deployment
+  // Uncomment to run a subscription check 5 s after server start:
   /*
   setTimeout(async () => {
     console.log('\n🔔 RUNNING STARTUP SUBSCRIPTION CHECK');
     try {
       const result = await runSubscriptionCheck();
-      console.log(`✅ Startup check completed. Suspended ${result.suspended} businesses.`);
+      console.log(`✅ Startup check done. Suspended ${result.suspended} businesses.`);
     } catch (error) {
       console.error('❌ Startup subscription check failed:', error);
     }
@@ -180,32 +216,30 @@ if (process.env.NODE_ENV !== 'test') {
 // ============================================================================
 // START SERVER
 // ============================================================================
-
 const PORT = process.env.PORT || 5000;
 
 app.listen(PORT, () => {
   console.log('\n' + '='.repeat(60));
   console.log('🚀 MyPadiFood Multi-Tenant Server');
   console.log('='.repeat(60));
-  console.log(`📡 Server running on port ${PORT}`);
-  console.log(`🌍 Environment: ${process.env.NODE_ENV || 'development'}`);
-  console.log(`🔗 API: http://localhost:${PORT}/api`);
-  console.log(`❤️  Health: http://localhost:${PORT}/health`);
-  console.log(`🔔 Subscription checks: Enabled`);
+  console.log(`📡 Port      : ${PORT}`);
+  console.log(`🌍 Env       : ${process.env.NODE_ENV || 'development'}`);
+  console.log(`🔗 API       : http://localhost:${PORT}/api`);
+  console.log(`❤️  Health   : http://localhost:${PORT}/health`);
+  console.log(`🌐 Prod domain: https://${PROD_DOMAIN}`);
+  console.log(`🔔 Sub checks: Enabled`);
   console.log('='.repeat(60) + '\n');
 });
 
-// Graceful shutdown
-process.on('SIGTERM', async () => {
-  console.log('👋 SIGTERM received, shutting down gracefully...');
+// ============================================================================
+// GRACEFUL SHUTDOWN
+// ============================================================================
+async function shutdown(signal) {
+  console.log(`\n👋 ${signal} received — shutting down gracefully...`);
   const prisma = require('./lib/prisma');
   await prisma.$disconnect();
   process.exit(0);
-});
+}
 
-process.on('SIGINT', async () => {
-  console.log('👋 SIGINT received, shutting down gracefully...');
-  const prisma = require('./lib/prisma');
-  await prisma.$disconnect();
-  process.exit(0);
-});
+process.on('SIGTERM', () => shutdown('SIGTERM'));
+process.on('SIGINT',  () => shutdown('SIGINT'));
