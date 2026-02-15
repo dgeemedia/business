@@ -1,3 +1,4 @@
+// frontend/src/pages/Products.jsx
 import React, { useState, useEffect } from 'react';
 import { Plus, Edit, Trash2, Eye, EyeOff, Image as ImageIcon, Search, Filter } from 'lucide-react';
 import { motion } from 'framer-motion';

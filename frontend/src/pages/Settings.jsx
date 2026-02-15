@@ -1,343 +1,546 @@
+// frontend/src/pages/Settings.jsx
 import React, { useState, useEffect } from 'react';
-import { Save, Building2, DollarSign, Globe, Bell, Shield, Palette } from 'lucide-react';
+import {
+  Save, Building2, DollarSign, Globe, Bell, Image as ImageIcon,
+  Clock, MapPin, Phone, MessageCircle, Facebook, Instagram,
+  Twitter, Youtube, FileText, Eye, Upload, X, Check
+} from 'lucide-react';
 import toast from 'react-hot-toast';
 import { Card, Button, LoadingSpinner } from '../components/shared';
 import useBusinessStore from '../stores/businessStore';
 import api from '../services/api';
+import { buildSubdomainUrl } from '../services/api';
 
+const CURRENCIES = [
+  { code: 'NGN', symbol: '₦', name: 'Nigerian Naira' },
+  { code: 'USD', symbol: '$', name: 'US Dollar' },
+  { code: 'EUR', symbol: '€', name: 'Euro' },
+  { code: 'GBP', symbol: '£', name: 'British Pound' },
+  { code: 'GHS', symbol: '₵', name: 'Ghanaian Cedi' },
+  { code: 'KES', symbol: 'KSh', name: 'Kenyan Shilling' },
+  { code: 'ZAR', symbol: 'R', name: 'South African Rand' },
+];
+
+const LANGUAGES = [
+  { code: 'en', name: 'English' },
+  { code: 'fr', name: 'French' },
+  { code: 'es', name: 'Spanish' },
+  { code: 'ar', name: 'Arabic' },
+  { code: 'yo', name: 'Yoruba' },
+  { code: 'ig', name: 'Igbo' },
+  { code: 'ha', name: 'Hausa' },
+];
+
+const TABS = [
+  { id: 'business',  label: 'Business Info',  icon: Building2 },
+  { id: 'storefront',label: 'Storefront',     icon: Eye },
+  { id: 'regional',  label: 'Regional',       icon: Globe },
+  { id: 'social',    label: 'Social & Footer',icon: Facebook },
+  { id: 'notify',    label: 'Notifications',  icon: Bell },
+];
+
+// ── Labelled Input ──────────────────────────────────────────────────────
+function Field({ label, helper, required, children }) {
+  return (
+    <div>
+      <label className="block text-sm font-semibold text-gray-700 mb-1.5">
+        {label}{required && <span className="text-red-400 ml-0.5">*</span>}
+      </label>
+      {children}
+      {helper && <p className="mt-1 text-xs text-gray-400">{helper}</p>}
+    </div>
+  );
+}
+
+function TextInput({ label, helper, required, ...props }) {
+  return (
+    <Field label={label} helper={helper} required={required}>
+      <input
+        {...props}
+        className="w-full px-4 py-2.5 border-2 border-gray-200 rounded-xl text-sm focus:outline-none focus:border-primary-500 transition-colors"
+      />
+    </Field>
+  );
+}
+
+// ─────────────────────────────────────────────────────────────────────────
 const Settings = () => {
   const { currentBusiness, fetchCurrentBusiness } = useBusinessStore();
-  const [loading, setLoading] = useState(false);
   const [saving, setSaving] = useState(false);
+  const [uploadingLogo, setUploadingLogo] = useState(false);
   const [activeTab, setActiveTab] = useState('business');
-  const [formData, setFormData] = useState({
-    businessName: '',
-    businessEmail: '',
-    businessPhone: '',
+
+  const [form, setForm] = useState({
+    // Business Info
+    businessName:   '',
+    email:          '',
+    phone:          '',
     whatsappNumber: '',
-    businessAddress: '',
+    address:        '',
+    description:    '',
+    businessHours:  '',
+    logo:           '',
+    primaryColor:   '#10B981',
+    secondaryColor: '#F59E0B',
+    // Regional
     currency: 'NGN',
     language: 'en',
-    description: '',
-    taxRate: '0',
+    // Storefront
+    taxRate:     '0',
     deliveryFee: '0',
+    // Social
+    facebookUrl:  '',
+    instagramUrl: '',
+    twitterUrl:   '',
+    youtubeUrl:   '',
+    // Footer
+    footerText:      '',
+    footerCopyright: '',
+    footerAddress:   '',
+    footerEmail:     '',
+    footerPhone:     '',
   });
 
-  const currencies = [
-    { code: 'NGN', symbol: '₦', name: 'Nigerian Naira' },
-    { code: 'USD', symbol: '$', name: 'US Dollar' },
-    { code: 'EUR', symbol: '€', name: 'Euro' },
-    { code: 'GBP', symbol: '£', name: 'British Pound' },
-    { code: 'GHS', symbol: '₵', name: 'Ghanaian Cedi' },
-    { code: 'KES', symbol: 'KSh', name: 'Kenyan Shilling' },
-    { code: 'ZAR', symbol: 'R', name: 'South African Rand' },
-  ];
-
-  const languages = [
-    { code: 'en', name: 'English' },
-    { code: 'fr', name: 'French' },
-    { code: 'es', name: 'Spanish' },
-    { code: 'ar', name: 'Arabic' },
-    { code: 'yo', name: 'Yoruba' },
-    { code: 'ig', name: 'Igbo' },
-    { code: 'ha', name: 'Hausa' },
-  ];
-
   useEffect(() => {
-    loadSettings();
+    if (!currentBusiness) { fetchCurrentBusiness(); return; }
+    const b = currentBusiness;
+    setForm({
+      businessName:    b.businessName  || b.name    || '',
+      email:           b.email         || '',
+      phone:           b.phone         || '',
+      whatsappNumber:  b.whatsappNumber|| '',
+      address:         b.address       || '',
+      description:     b.description   || '',
+      businessHours:   b.businessHours || '',
+      logo:            b.logo          || '',
+      primaryColor:    b.primaryColor  || '#10B981',
+      secondaryColor:  b.secondaryColor|| '#F59E0B',
+      currency:        b.currency      || 'NGN',
+      language:        b.language      || 'en',
+      taxRate:         String(b.taxRate       ?? 0),
+      deliveryFee:     String(b.deliveryFee   ?? 0),
+      facebookUrl:     b.facebookUrl   || '',
+      instagramUrl:    b.instagramUrl  || '',
+      twitterUrl:      b.twitterUrl    || '',
+      youtubeUrl:      b.youtubeUrl    || '',
+      footerText:      b.footerText    || '',
+      footerCopyright: b.footerCopyright|| '',
+      footerAddress:   b.footerAddress || '',
+      footerEmail:     b.footerEmail   || '',
+      footerPhone:     b.footerPhone   || '',
+    });
   }, [currentBusiness]);
 
-  const loadSettings = async () => {
-    if (currentBusiness) {
-      setFormData({
-        businessName: currentBusiness.name || '',
-        businessEmail: currentBusiness.email || '',
-        businessPhone: currentBusiness.phone || '',
-        whatsappNumber: currentBusiness.whatsappNumber || '',
-        businessAddress: currentBusiness.address || '',
-        currency: currentBusiness.currency || 'NGN',
-        language: currentBusiness.language || 'en',
-        description: currentBusiness.description || '',
-        taxRate: currentBusiness.taxRate?.toString() || '0',
-        deliveryFee: currentBusiness.deliveryFee?.toString() || '0',
+  const set = (key) => (e) => setForm(f => ({ ...f, [key]: e.target.value }));
+
+  // ── Logo upload ──────────────────────────────────────────────────────
+  const handleLogoUpload = async (e) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    if (file.size > 5 * 1024 * 1024) { toast.error('Max file size is 5 MB'); return; }
+    try {
+      setUploadingLogo(true);
+      const fd = new FormData();
+      fd.append('file', file);
+      const res = await api.post('/api/upload', fd, {
+        headers: { 'Content-Type': 'multipart/form-data' },
       });
+      setForm(f => ({ ...f, logo: res.data.imageUrl || res.data.url }));
+      toast.success('Logo uploaded');
+    } catch {
+      toast.error('Logo upload failed');
+    } finally {
+      setUploadingLogo(false);
     }
   };
 
+  // ── Save ─────────────────────────────────────────────────────────────
   const handleSubmit = async (e) => {
     e.preventDefault();
     setSaving(true);
     try {
       await api.put('/api/settings', {
-        ...formData,
-        taxRate: parseFloat(formData.taxRate) || 0,
-        deliveryFee: parseFloat(formData.deliveryFee) || 0,
+        ...form,
+        taxRate:     parseFloat(form.taxRate)     || 0,
+        deliveryFee: parseFloat(form.deliveryFee) || 0,
       });
-      toast.success('Settings updated successfully');
+      toast.success('Settings saved ✓');
       await fetchCurrentBusiness();
-    } catch (error) {
-      toast.error('Failed to update settings');
+    } catch {
+      toast.error('Failed to save settings');
     } finally {
       setSaving(false);
     }
   };
 
-  const tabs = [
-    { id: 'business', name: 'Business Info', icon: Building2 },
-    { id: 'regional', name: 'Regional', icon: Globe },
-    { id: 'notifications', name: 'Notifications', icon: Bell },
-  ];
-
-  if (loading) return <LoadingSpinner fullScreen />;
+  const storefrontUrl = currentBusiness?.slug ? buildSubdomainUrl(currentBusiness.slug) : null;
 
   return (
     <div className="space-y-6">
       {/* Header */}
-      <div>
-        <h1 className="text-3xl font-bold text-gray-900 mb-2">Settings</h1>
-        <p className="text-gray-600">Manage your business settings and preferences</p>
+      <div className="flex items-center justify-between">
+        <div>
+          <h1 className="text-3xl font-bold text-gray-900 mb-1">Settings</h1>
+          <p className="text-gray-500 text-sm">Manage your business profile and storefront</p>
+        </div>
+        {storefrontUrl && (
+          <a
+            href={storefrontUrl}
+            target="_blank"
+            rel="noopener noreferrer"
+            className="hidden sm:flex items-center gap-2 text-sm text-primary-600 font-semibold hover:underline"
+          >
+            <Eye className="w-4 h-4" />
+            Preview Storefront
+          </a>
+        )}
       </div>
 
-      {/* Tabs */}
-      <div className="border-b border-gray-200">
-        <div className="flex gap-4">
-          {tabs.map((tab) => (
+      {/* Tab bar */}
+      <div className="border-b border-gray-200 overflow-x-auto">
+        <div className="flex gap-1 min-w-max">
+          {TABS.map(tab => (
             <button
               key={tab.id}
               onClick={() => setActiveTab(tab.id)}
-              className={`flex items-center gap-2 px-4 py-3 border-b-2 transition-colors ${
+              className={`flex items-center gap-2 px-4 py-3 text-sm font-medium border-b-2 transition-colors whitespace-nowrap ${
                 activeTab === tab.id
-                  ? 'border-primary-600 text-primary-600 font-medium'
-                  : 'border-transparent text-gray-600 hover:text-gray-900'
+                  ? 'border-primary-600 text-primary-700'
+                  : 'border-transparent text-gray-500 hover:text-gray-800'
               }`}
             >
-              <tab.icon className="w-5 h-5" />
-              <span>{tab.name}</span>
+              <tab.icon className="w-4 h-4" />
+              {tab.label}
             </button>
           ))}
         </div>
       </div>
 
-      {/* Settings Form */}
       <form onSubmit={handleSubmit} className="space-y-6">
-        {/* Business Information Tab */}
+
+        {/* ── BUSINESS INFO ──────────────────────────────────────────── */}
         {activeTab === 'business' && (
-          <Card title="Business Information">
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-              <Input
-                label="Business Name"
-                value={formData.businessName}
-                onChange={(e) => setFormData({ ...formData, businessName: e.target.value })}
-                required
-              />
-
-              <Input
-                label="Business Email"
-                type="email"
-                value={formData.businessEmail}
-                onChange={(e) => setFormData({ ...formData, businessEmail: e.target.value })}
-                required
-              />
-
-              <Input
-                label="Phone Number"
-                type="tel"
-                value={formData.businessPhone}
-                onChange={(e) => setFormData({ ...formData, businessPhone: e.target.value })}
-              />
-
-              <Input
-                label="WhatsApp Number *"
-                type="tel"
-                value={formData.whatsappNumber}
-                onChange={(e) => setFormData({ ...formData, whatsappNumber: e.target.value })}
-                placeholder="+234 800 000 0000"
-                helperText="Customer orders will be sent to this WhatsApp number"
-                required
-              />
-
-              <Input
-                label="Address"
-                value={formData.businessAddress}
-                onChange={(e) => setFormData({ ...formData, businessAddress: e.target.value })}
-              />
-
-              <div className="md:col-span-2">
-                <label className="label">Business Description</label>
-                <textarea
-                  className="input"
-                  rows="3"
-                  value={formData.description}
-                  onChange={(e) => setFormData({ ...formData, description: e.target.value })}
-                  placeholder="Tell customers about your business..."
-                />
-                <p className="mt-1 text-sm text-gray-500">
-                  This will be displayed on your public storefront
-                </p>
-              </div>
-
-              <Input
-                label="Tax Rate (%)"
-                type="number"
-                step="0.01"
-                value={formData.taxRate}
-                onChange={(e) => setFormData({ ...formData, taxRate: e.target.value })}
-                helperText="Percentage tax to add to orders"
-              />
-
-              <Input
-                label="Delivery Fee"
-                type="number"
-                step="0.01"
-                value={formData.deliveryFee}
-                onChange={(e) => setFormData({ ...formData, deliveryFee: e.target.value })}
-                helperText="Default delivery charge"
-              />
-            </div>
-          </Card>
-        )}
-
-        {/* Regional Settings Tab */}
-        {activeTab === 'regional' && (
           <div className="space-y-6">
-            <Card title="Currency & Language Settings">
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-                <div>
-                  <label className="label">Currency *</label>
-                  <select
-                    className="input"
-                    value={formData.currency}
-                    onChange={(e) => setFormData({ ...formData, currency: e.target.value })}
-                    required
-                  >
-                    {currencies.map((currency) => (
-                      <option key={currency.code} value={currency.code}>
-                        {currency.symbol} {currency.name} ({currency.code})
-                      </option>
-                    ))}
-                  </select>
-                  <div className="mt-3 p-3 bg-blue-50 rounded-lg">
-                    <p className="text-sm text-blue-900 flex items-start gap-2">
-                      <DollarSign className="w-4 h-4 mt-0.5 flex-shrink-0" />
-                      <span>
-                        This currency will be used for all prices on your public storefront. 
-                        Customers will see prices in {currencies.find(c => c.code === formData.currency)?.name}.
-                      </span>
-                    </p>
-                  </div>
+            {/* Logo upload card */}
+            <Card title="Business Logo">
+              <div className="flex items-start gap-5">
+                <div className="flex-shrink-0">
+                  {form.logo ? (
+                    <div className="relative">
+                      <img src={form.logo} alt="Logo" className="w-24 h-24 rounded-2xl object-cover border-2 border-gray-100" />
+                      <button
+                        type="button"
+                        onClick={() => setForm(f => ({ ...f, logo: '' }))}
+                        className="absolute -top-2 -right-2 w-6 h-6 bg-red-500 text-white rounded-full flex items-center justify-center text-xs"
+                      >
+                        <X className="w-3 h-3" />
+                      </button>
+                    </div>
+                  ) : (
+                    <div className="w-24 h-24 rounded-2xl bg-gray-100 border-2 border-dashed border-gray-300 flex flex-col items-center justify-center text-gray-400">
+                      <ImageIcon className="w-7 h-7 mb-1" />
+                      <span className="text-xs">No logo</span>
+                    </div>
+                  )}
                 </div>
-
                 <div>
-                  <label className="label">Language *</label>
-                  <select
-                    className="input"
-                    value={formData.language}
-                    onChange={(e) => setFormData({ ...formData, language: e.target.value })}
-                    required
-                  >
-                    {languages.map((language) => (
-                      <option key={language.code} value={language.code}>
-                        {language.name}
-                      </option>
-                    ))}
-                  </select>
-                  <div className="mt-3 p-3 bg-blue-50 rounded-lg">
-                    <p className="text-sm text-blue-900 flex items-start gap-2">
-                      <Globe className="w-4 h-4 mt-0.5 flex-shrink-0" />
-                      <span>
-                        Default language for your storefront interface. This affects how 
-                        buttons, labels, and messages appear to your customers.
-                      </span>
-                    </p>
-                  </div>
-                </div>
-              </div>
-
-              {/* Preview */}
-              <div className="mt-6 p-4 bg-gray-50 rounded-lg border border-gray-200">
-                <h4 className="font-semibold text-gray-900 mb-2">Preview</h4>
-                <div className="space-y-1 text-sm text-gray-700">
-                  <p>
-                    <span className="font-medium">Currency Symbol:</span>{' '}
-                    {currencies.find(c => c.code === formData.currency)?.symbol}
-                  </p>
-                  <p>
-                    <span className="font-medium">Example Price:</span>{' '}
-                    {currencies.find(c => c.code === formData.currency)?.symbol}5,000.00
-                  </p>
-                  <p>
-                    <span className="font-medium">Language:</span>{' '}
-                    {languages.find(l => l.code === formData.language)?.name}
-                  </p>
+                  <input type="file" id="logo-upload" accept="image/*" className="hidden" onChange={handleLogoUpload} />
+                  <label htmlFor="logo-upload">
+                    <Button
+                      type="button"
+                      variant="outline"
+                      icon={Upload}
+                      loading={uploadingLogo}
+                      onClick={() => document.getElementById('logo-upload').click()}
+                    >
+                      {uploadingLogo ? 'Uploading…' : 'Upload Logo'}
+                    </Button>
+                  </label>
+                  <p className="text-xs text-gray-400 mt-2">JPG, PNG or WebP · Max 5 MB</p>
+                  <p className="text-xs text-gray-400">Recommended: 256 × 256 px square</p>
                 </div>
               </div>
             </Card>
 
-            <Card>
-              <div className="flex items-start gap-3 p-4 bg-yellow-50 rounded-lg border border-yellow-200">
-                <Shield className="w-5 h-5 text-yellow-600 mt-0.5 flex-shrink-0" />
-                <div className="text-sm text-yellow-900">
-                  <p className="font-medium mb-1">Important Notes:</p>
-                  <ul className="list-disc list-inside space-y-1">
-                    <li>Currency changes affect all product prices on your storefront</li>
-                    <li>Language setting updates UI text for customers browsing your store</li>
-                    <li>These changes take effect immediately after saving</li>
-                    <li>Existing orders maintain their original currency</li>
-                  </ul>
+            {/* Color theme */}
+            <Card title="Brand Colours">
+              <div className="grid grid-cols-2 gap-4">
+                <Field label="Primary Colour" helper="Used for buttons, prices, and accents">
+                  <div className="flex items-center gap-3">
+                    <input
+                      type="color"
+                      value={form.primaryColor}
+                      onChange={set('primaryColor')}
+                      className="w-10 h-10 rounded-xl border-2 border-gray-200 cursor-pointer"
+                    />
+                    <input
+                      type="text"
+                      value={form.primaryColor}
+                      onChange={set('primaryColor')}
+                      className="flex-1 px-3 py-2 border-2 border-gray-200 rounded-xl text-sm font-mono"
+                    />
+                  </div>
+                </Field>
+                <Field label="Secondary Colour" helper="Used for gradients and highlights">
+                  <div className="flex items-center gap-3">
+                    <input
+                      type="color"
+                      value={form.secondaryColor}
+                      onChange={set('secondaryColor')}
+                      className="w-10 h-10 rounded-xl border-2 border-gray-200 cursor-pointer"
+                    />
+                    <input
+                      type="text"
+                      value={form.secondaryColor}
+                      onChange={set('secondaryColor')}
+                      className="flex-1 px-3 py-2 border-2 border-gray-200 rounded-xl text-sm font-mono"
+                    />
+                  </div>
+                </Field>
+              </div>
+              {/* Mini preview */}
+              <div
+                className="mt-4 h-10 rounded-xl"
+                style={{ background: `linear-gradient(135deg, ${form.primaryColor}, ${form.secondaryColor})` }}
+              />
+            </Card>
+
+            <Card title="Contact & Details">
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                <TextInput label="Business Name" value={form.businessName} onChange={set('businessName')} required />
+                <TextInput label="Email" type="email" value={form.email} onChange={set('email')} />
+                <TextInput label="Phone" type="tel" value={form.phone} onChange={set('phone')} />
+                <TextInput
+                  label="WhatsApp Number"
+                  type="tel"
+                  value={form.whatsappNumber}
+                  onChange={set('whatsappNumber')}
+                  placeholder="+234 803 000 0000"
+                  helper="Orders are sent here"
+                  required
+                />
+                <div className="md:col-span-2">
+                  <TextInput label="Address" value={form.address} onChange={set('address')} />
+                </div>
+                <div className="md:col-span-2">
+                  <Field label="Business Hours" helper='e.g. "Mon–Fri: 9am–6pm, Sat: 10am–4pm"'>
+                    <div className="relative">
+                      <Clock className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400" />
+                      <input
+                        value={form.businessHours}
+                        onChange={set('businessHours')}
+                        placeholder="Mon–Fri: 9am–6pm"
+                        className="w-full pl-10 pr-4 py-2.5 border-2 border-gray-200 rounded-xl text-sm focus:outline-none focus:border-primary-500"
+                      />
+                    </div>
+                  </Field>
+                </div>
+                <div className="md:col-span-2">
+                  <Field label="About Your Business" helper="Shown in the storefront hero section">
+                    <textarea
+                      value={form.description}
+                      onChange={set('description')}
+                      rows={3}
+                      placeholder="Tell customers what makes your business special…"
+                      className="w-full px-4 py-2.5 border-2 border-gray-200 rounded-xl text-sm focus:outline-none focus:border-primary-500 resize-none"
+                    />
+                  </Field>
                 </div>
               </div>
             </Card>
           </div>
         )}
 
-        {/* Notifications Tab */}
-        {activeTab === 'notifications' && (
-          <Card title="Notification Preferences">
-            <div className="space-y-4">
-              <div className="flex items-start gap-3 p-4 bg-gray-50 rounded-lg">
-                <input type="checkbox" className="mt-1" defaultChecked />
+        {/* ── STOREFRONT ─────────────────────────────────────────────── */}
+        {activeTab === 'storefront' && (
+          <div className="space-y-6">
+            {storefrontUrl && (
+              <div className="flex items-center justify-between p-4 bg-primary-50 border border-primary-200 rounded-2xl">
                 <div>
-                  <p className="font-medium text-gray-900">New Orders</p>
-                  <p className="text-sm text-gray-600">Get notified when you receive new orders</p>
+                  <p className="text-sm font-semibold text-primary-800">Your Live Storefront</p>
+                  <p className="text-xs text-primary-600 font-mono mt-0.5">{storefrontUrl}</p>
                 </div>
+                <a
+                  href={storefrontUrl}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="btn btn-primary text-sm"
+                >
+                  <Eye className="w-4 h-4" /> Open
+                </a>
               </div>
+            )}
 
-              <div className="flex items-start gap-3 p-4 bg-gray-50 rounded-lg">
-                <input type="checkbox" className="mt-1" defaultChecked />
-                <div>
-                  <p className="font-medium text-gray-900">Low Stock Alerts</p>
-                  <p className="text-sm text-gray-600">Alert when product stock is running low</p>
-                </div>
+            <Card title="Pricing & Checkout">
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                <TextInput
+                  label="Tax Rate (%)"
+                  type="number"
+                  step="0.1"
+                  min="0"
+                  max="100"
+                  value={form.taxRate}
+                  onChange={set('taxRate')}
+                  helper="Applied to subtotal at checkout (0 = no tax)"
+                />
+                <TextInput
+                  label="Delivery Fee"
+                  type="number"
+                  step="0.01"
+                  min="0"
+                  value={form.deliveryFee}
+                  onChange={set('deliveryFee')}
+                  helper="Flat delivery fee added to every order (0 = free)"
+                />
               </div>
+              <div className="mt-4 p-4 bg-amber-50 border border-amber-200 rounded-xl text-sm text-amber-800">
+                <strong>Preview:</strong>{' '}
+                An order of {CURRENCIES.find(c => c.code === form.currency)?.symbol}10,000 →
+                {parseFloat(form.taxRate) > 0 ? ` + ${parseFloat(form.taxRate)}% tax` : ' no tax'} →
+                {parseFloat(form.deliveryFee) > 0 ? ` + ${CURRENCIES.find(c => c.code === form.currency)?.symbol}${parseFloat(form.deliveryFee).toLocaleString()} delivery` : ' free delivery'} →
+                <strong>
+                  {' '}{CURRENCIES.find(c => c.code === form.currency)?.symbol}
+                  {(10000 * (1 + parseFloat(form.taxRate || 0) / 100) + parseFloat(form.deliveryFee || 0)).toLocaleString()}
+                </strong>
+              </div>
+            </Card>
+          </div>
+        )}
 
-              <div className="flex items-start gap-3 p-4 bg-gray-50 rounded-lg">
-                <input type="checkbox" className="mt-1" defaultChecked />
-                <div>
-                  <p className="font-medium text-gray-900">Customer Reviews</p>
-                  <p className="text-sm text-gray-600">Get notified of new customer ratings and reviews</p>
-                </div>
-              </div>
-
-              <div className="flex items-start gap-3 p-4 bg-gray-50 rounded-lg">
-                <input type="checkbox" className="mt-1" />
-                <div>
-                  <p className="font-medium text-gray-900">Daily Reports</p>
-                  <p className="text-sm text-gray-600">Receive daily sales and performance reports</p>
-                </div>
-              </div>
+        {/* ── REGIONAL ───────────────────────────────────────────────── */}
+        {activeTab === 'regional' && (
+          <Card title="Currency & Language">
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+              <Field label="Currency" helper="All product prices display in this currency">
+                <select
+                  value={form.currency}
+                  onChange={set('currency')}
+                  className="w-full px-4 py-2.5 border-2 border-gray-200 rounded-xl text-sm focus:outline-none focus:border-primary-500"
+                >
+                  {CURRENCIES.map(c => (
+                    <option key={c.code} value={c.code}>{c.symbol} {c.name} ({c.code})</option>
+                  ))}
+                </select>
+              </Field>
+              <Field label="Language" helper="UI language for your storefront">
+                <select
+                  value={form.language}
+                  onChange={set('language')}
+                  className="w-full px-4 py-2.5 border-2 border-gray-200 rounded-xl text-sm focus:outline-none focus:border-primary-500"
+                >
+                  {LANGUAGES.map(l => (
+                    <option key={l.code} value={l.code}>{l.name}</option>
+                  ))}
+                </select>
+              </Field>
             </div>
           </Card>
         )}
 
-        {/* Save Button */}
-        <div className="flex justify-end">
-          <Button
-            type="submit"
-            loading={saving}
-            icon={Save}
-            size="lg"
-          >
-            Save Changes
+        {/* ── SOCIAL & FOOTER ────────────────────────────────────────── */}
+        {activeTab === 'social' && (
+          <div className="space-y-6">
+            <Card title="Social Media Links">
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                {[
+                  { key: 'facebookUrl',  label: 'Facebook',  icon: Facebook,    placeholder: 'https://facebook.com/yourpage' },
+                  { key: 'instagramUrl', label: 'Instagram', icon: Instagram,   placeholder: 'https://instagram.com/yourhandle' },
+                  { key: 'twitterUrl',   label: 'Twitter/X', icon: Twitter,     placeholder: 'https://twitter.com/yourhandle' },
+                  { key: 'youtubeUrl',   label: 'YouTube',   icon: Youtube,     placeholder: 'https://youtube.com/@yourchannel' },
+                ].map(({ key, label, icon: Icon, placeholder }) => (
+                  <Field key={key} label={label}>
+                    <div className="relative">
+                      <Icon className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400" />
+                      <input
+                        type="url"
+                        value={form[key]}
+                        onChange={set(key)}
+                        placeholder={placeholder}
+                        className="w-full pl-10 pr-4 py-2.5 border-2 border-gray-200 rounded-xl text-sm focus:outline-none focus:border-primary-500"
+                      />
+                    </div>
+                  </Field>
+                ))}
+              </div>
+            </Card>
+
+            <Card title="Footer Content">
+              <div className="space-y-4">
+                <Field label="Footer Tagline" helper="Short text shown under your logo in the footer">
+                  <textarea
+                    value={form.footerText}
+                    onChange={set('footerText')}
+                    rows={2}
+                    placeholder="Quality products delivered to your door."
+                    className="w-full px-4 py-2.5 border-2 border-gray-200 rounded-xl text-sm focus:outline-none focus:border-primary-500 resize-none"
+                  />
+                </Field>
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                  <TextInput
+                    label="Footer Address"
+                    value={form.footerAddress}
+                    onChange={set('footerAddress')}
+                    placeholder="22 Broad St, Lagos"
+                  />
+                  <TextInput
+                    label="Footer Email"
+                    type="email"
+                    value={form.footerEmail}
+                    onChange={set('footerEmail')}
+                    placeholder="hello@yourbusiness.com"
+                  />
+                  <TextInput
+                    label="Footer Phone"
+                    value={form.footerPhone}
+                    onChange={set('footerPhone')}
+                    placeholder="+234 803 000 0000"
+                  />
+                  <TextInput
+                    label="Copyright Text"
+                    value={form.footerCopyright}
+                    onChange={set('footerCopyright')}
+                    placeholder="© {year} My Business. All rights reserved."
+                    helper="Use {year} for current year"
+                  />
+                </div>
+              </div>
+            </Card>
+          </div>
+        )}
+
+        {/* ── NOTIFICATIONS ──────────────────────────────────────────── */}
+        {activeTab === 'notify' && (
+          <Card title="Notification Preferences">
+            <div className="space-y-3">
+              {[
+                { label: 'New Orders', desc: 'Get notified when you receive new orders', defaultChecked: true },
+                { label: 'Low Stock Alerts', desc: 'Alert when product stock is running low', defaultChecked: true },
+                { label: 'Customer Reviews', desc: 'Get notified of new ratings and reviews', defaultChecked: true },
+                { label: 'Daily Reports', desc: 'Receive daily sales and performance reports', defaultChecked: false },
+                { label: 'Subscription Reminders', desc: 'Get reminded before your subscription expires', defaultChecked: true },
+              ].map(({ label, desc, defaultChecked }) => (
+                <label key={label} className="flex items-start gap-3 p-4 bg-gray-50 rounded-xl cursor-pointer hover:bg-gray-100 transition-colors">
+                  <input type="checkbox" className="mt-0.5 rounded" defaultChecked={defaultChecked} />
+                  <div>
+                    <p className="font-medium text-gray-900 text-sm">{label}</p>
+                    <p className="text-xs text-gray-500 mt-0.5">{desc}</p>
+                  </div>
+                </label>
+              ))}
+            </div>
+          </Card>
+        )}
+
+        {/* Save button */}
+        <div className="flex items-center justify-between pt-2">
+          {storefrontUrl && (
+            <a href={storefrontUrl} target="_blank" rel="noopener noreferrer"
+              className="text-sm text-primary-600 hover:underline flex items-center gap-1">
+              <Eye className="w-4 h-4" /> Preview storefront
+            </a>
+          )}
+          <Button type="submit" loading={saving} icon={Save} size="lg" className="ml-auto">
+            {saving ? 'Saving…' : 'Save Changes'}
           </Button>
         </div>
       </form>
