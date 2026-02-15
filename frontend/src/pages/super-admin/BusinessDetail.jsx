@@ -4,16 +4,14 @@ import {
   Building2, ArrowLeft, Power, Trash2, DollarSign,
   Package, ShoppingBag, Users as UsersIcon, CheckCircle,
   XCircle, Clock, AlertCircle, Globe, Phone, Mail,
-  MessageCircle, MapPin, Edit, Gift, RefreshCw
+  MessageCircle, MapPin, Edit, Gift
 } from 'lucide-react';
 import { motion } from 'framer-motion';
 import { Link, useParams, useNavigate } from 'react-router-dom';
 import toast from 'react-hot-toast';
 import { Card, Button, Badge, LoadingSpinner } from '../../components/shared';
-import api from '../../services/api';
+import api, { buildSubdomainUrl } from '../../services/api';
 import { formatDate, daysUntil } from '../../utils/helpers';
-
-const ROOT_DOMAIN = import.meta.env.VITE_ROOT_DOMAIN || 'yourdomain.com';
 
 function InfoRow({ icon: Icon, label, value, mono }) {
   if (!value) return null;
@@ -43,7 +41,6 @@ const SuperAdminBusinessDetail = () => {
   const navigate = useNavigate();
   const [business, setBusiness] = useState(null);
   const [users, setUsers] = useState([]);
-  const [recentOrders, setRecentOrders] = useState([]);
   const [loading, setLoading] = useState(true);
   const [actionLoading, setActionLoading] = useState(false);
 
@@ -58,7 +55,7 @@ const SuperAdminBusinessDetail = () => {
       ]);
       setBusiness(bizRes.data);
       setUsers(usersRes.data?.users || usersRes.data || []);
-    } catch (error) {
+    } catch {
       toast.error('Failed to load business details');
       navigate('/super-admin/businesses');
     } finally {
@@ -82,7 +79,7 @@ const SuperAdminBusinessDetail = () => {
   };
 
   const handleDelete = async () => {
-    if (!confirm('⚠️ This will permanently delete the business and ALL its data. This cannot be undone. Continue?')) return;
+    if (!confirm('⚠️ This will permanently delete the business and ALL its data. Continue?')) return;
     try {
       setActionLoading(true);
       await api.delete(`/api/business/${id}`);
@@ -108,7 +105,6 @@ const SuperAdminBusinessDetail = () => {
     }
   };
 
-  // ── Subscription badge ────────────────────────────────────────────────────
   const getSubBadge = (b) => {
     if (!b.isActive) return <Badge variant="danger" icon={XCircle}>Suspended</Badge>;
     if (b.subscriptionPlan === 'free_trial') {
@@ -127,11 +123,14 @@ const SuperAdminBusinessDetail = () => {
   if (loading) return <LoadingSpinner fullScreen />;
   if (!business) return null;
 
-  const subdomainUrl = `https://${business.slug}.${ROOT_DOMAIN}`;
+  // ✅ FIX: buildSubdomainUrl is dev-aware
+  //    Dev  → http://gee-store.localhost:3000
+  //    Prod → https://gee-store.mypadifood.com
+  const storefrontUrl = buildSubdomainUrl(business.slug);
 
   return (
     <div className="space-y-6">
-      {/* ── Back + Actions bar ─────────────────────────────────────────────── */}
+      {/* Back + Actions */}
       <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
         <Link
           to="/super-admin/businesses"
@@ -168,7 +167,7 @@ const SuperAdminBusinessDetail = () => {
         </div>
       </div>
 
-      {/* ── Hero ───────────────────────────────────────────────────────────── */}
+      {/* Hero */}
       <Card>
         <div className="flex flex-col sm:flex-row sm:items-start gap-4">
           <div className="w-16 h-16 bg-gradient-to-br from-blue-500 to-indigo-600 rounded-2xl flex items-center justify-center flex-shrink-0">
@@ -179,14 +178,15 @@ const SuperAdminBusinessDetail = () => {
               <h1 className="text-2xl font-black text-gray-900">{business.businessName}</h1>
               {getSubBadge(business)}
             </div>
+            {/* ✅ Opens the correct URL in dev or prod */}
             <a
-              href={subdomainUrl}
+              href={storefrontUrl}
               target="_blank"
               rel="noopener noreferrer"
               className="text-blue-500 font-mono text-sm hover:underline flex items-center gap-1"
             >
               <Globe className="w-3.5 h-3.5" />
-              {subdomainUrl}
+              {storefrontUrl}
             </a>
             {business.description && (
               <p className="text-gray-600 text-sm mt-2 max-w-2xl">{business.description}</p>
@@ -195,32 +195,29 @@ const SuperAdminBusinessDetail = () => {
         </div>
       </Card>
 
-      {/* ── Stats row ──────────────────────────────────────────────────────── */}
+      {/* Stats */}
       <div className="grid grid-cols-2 sm:grid-cols-4 gap-4">
-        <StatCard icon={Package}     label="Products" value={business._count?.products ?? 0} color="blue"   />
-        <StatCard icon={ShoppingBag} label="Orders"   value={business._count?.orders   ?? 0} color="green"  />
-        <StatCard icon={UsersIcon}   label="Users"    value={business._count?.users    ?? 0} color="purple" />
+        <StatCard icon={Package}     label="Products"    value={business._count?.products ?? 0} color="blue"   />
+        <StatCard icon={ShoppingBag} label="Orders"      value={business._count?.orders   ?? 0} color="green"  />
+        <StatCard icon={UsersIcon}   label="Users"       value={business._count?.users    ?? 0} color="purple" />
         <StatCard icon={Clock}       label="Days Active"
           value={Math.max(0, Math.floor((Date.now() - new Date(business.createdAt)) / 86400000))}
           color="orange"
         />
       </div>
 
-      {/* ── Two-column detail ──────────────────────────────────────────────── */}
+      {/* Two-column detail */}
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-
-        {/* Business Info */}
         <Card title="Business Details">
-          <InfoRow icon={Phone}          label="Phone"      value={business.phone} />
-          <InfoRow icon={MessageCircle}  label="WhatsApp"   value={business.whatsappNumber} />
-          <InfoRow icon={Mail}           label="Email"      value={business.email} />
-          <InfoRow icon={MapPin}         label="Address"    value={business.address} />
-          <InfoRow icon={Building2}      label="Category"   value={business.businessType?.replace(/_/g, ' ')} />
-          <InfoRow icon={Globe}          label="Subdomain"  value={business.slug} mono />
-          <InfoRow icon={Clock}          label="Created"    value={formatDate(business.createdAt)} />
+          <InfoRow icon={Phone}         label="Phone"     value={business.phone} />
+          <InfoRow icon={MessageCircle} label="WhatsApp"  value={business.whatsappNumber} />
+          <InfoRow icon={Mail}          label="Email"     value={business.email} />
+          <InfoRow icon={MapPin}        label="Address"   value={business.address} />
+          <InfoRow icon={Building2}     label="Category"  value={business.businessType?.replace(/_/g, ' ')} />
+          <InfoRow icon={Globe}         label="Subdomain" value={business.slug} mono />
+          <InfoRow icon={Clock}         label="Created"   value={formatDate(business.createdAt)} />
         </Card>
 
-        {/* Subscription Info */}
         <Card
           title="Subscription"
           action={
@@ -284,7 +281,7 @@ const SuperAdminBusinessDetail = () => {
         </Card>
       </div>
 
-      {/* ── Users in this business ─────────────────────────────────────────── */}
+      {/* Users */}
       <Card title={`Users (${users.length})`}>
         {users.length === 0 ? (
           <p className="text-center py-8 text-gray-500 text-sm">No users in this business</p>
@@ -297,16 +294,12 @@ const SuperAdminBusinessDetail = () => {
                     {(u.firstName?.[0] || u.email[0]).toUpperCase()}
                   </div>
                   <div>
-                    <p className="text-sm font-semibold text-gray-900">
-                      {u.firstName} {u.lastName}
-                    </p>
+                    <p className="text-sm font-semibold text-gray-900">{u.firstName} {u.lastName}</p>
                     <p className="text-xs text-gray-500">{u.email}</p>
                   </div>
                 </div>
                 <div className="flex items-center gap-2">
-                  <Badge variant={u.role === 'admin' ? 'primary' : 'info'} size="sm">
-                    {u.role}
-                  </Badge>
+                  <Badge variant={u.role === 'admin' ? 'primary' : 'info'} size="sm">{u.role}</Badge>
                   <Badge variant={u.active ? 'success' : 'danger'} size="sm">
                     {u.active ? 'Active' : 'Inactive'}
                   </Badge>

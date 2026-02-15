@@ -1,7 +1,7 @@
-// backend/src/routes/business.js (FIXED route order)
+// backend/src/routes/business.js
 const express = require('express');
 const router = express.Router();
-const { 
+const {
   getBusinessBySlug,
   getAllBusinesses,
   getBusiness,
@@ -9,7 +9,10 @@ const {
   updateBusiness,
   deleteBusiness,
   getCurrentBusiness,
-  toggleBusinessStatus
+  toggleBusinessStatus,
+  // ✅ NEW: public storefront handlers
+  getPublicBusiness,
+  getPublicBusinessProducts,
 } = require('../controllers/businessController');
 
 const {
@@ -17,78 +20,75 @@ const {
   updateSubscription,
   getSubscriptionStatusDetails,
   getExpiringSubscriptions,
-  bulkRenewSubscriptions
+  bulkRenewSubscriptions,
 } = require('../controllers/subscriptionController');
 
 const { authMiddleware, requireSuperAdmin } = require('../middleware/auth');
 const { asyncHandler } = require('../middleware/errorHandler');
 
 // ============================================================================
-// PUBLIC ROUTES (no auth required)
+// ✅ PUBLIC ROUTES — no auth, no subdomain context needed
+//    MUST be declared before /:id so Express doesn't try to parse
+//    "public" or "by-slug" as a numeric business ID.
 // ============================================================================
 
-// GET /api/business/by-slug/:slug
-// Used by frontend to load business data from subdomain
+// GET /api/business/public/:slug
+// Storefront: load business info by slug
+router.get('/public/:slug', asyncHandler(getPublicBusiness));
+
+// GET /api/business/public/:slug/products
+// Storefront: load available products for a business
+router.get('/public/:slug/products', asyncHandler(getPublicBusinessProducts));
+
+// GET /api/business/by-slug/:slug  (legacy / internal use)
 router.get('/by-slug/:slug', asyncHandler(getBusinessBySlug));
 
 // ============================================================================
-// AUTHENTICATED ROUTES - SPECIFIC PATHS FIRST (before /:id)
+// AUTHENTICATED ROUTES — specific paths before /:id
 // ============================================================================
 
 // GET /api/business/current
-// Get current user's business
 router.get('/current', authMiddleware, asyncHandler(getCurrentBusiness));
 
 // GET /api/business/expiring
-// Get businesses with expiring subscriptions (MUST come before /:id)
 router.get('/expiring', authMiddleware, requireSuperAdmin, asyncHandler(getExpiringSubscriptions));
 
 // ============================================================================
-// SUPER-ADMIN ONLY ROUTES - SPECIFIC PATHS
+// SUPER-ADMIN COLLECTION ROUTES
 // ============================================================================
 
-// GET /api/business
-// List all businesses (super-admin only)
+// GET  /api/business
 router.get('/', authMiddleware, requireSuperAdmin, asyncHandler(getAllBusinesses));
 
 // POST /api/business
-// Create new business (super-admin only)
 router.post('/', authMiddleware, requireSuperAdmin, asyncHandler(createBusiness));
 
 // POST /api/business/bulk-renew
-// Bulk renew multiple businesses
 router.post('/bulk-renew', authMiddleware, requireSuperAdmin, asyncHandler(bulkRenewSubscriptions));
 
 // ============================================================================
-// DYNAMIC ROUTES - MUST COME LAST
+// DYNAMIC /:id ROUTES — must come last
 // ============================================================================
 
 // GET /api/business/:id
-// Get single business (user's own or super-admin can view any)
 router.get('/:id', authMiddleware, asyncHandler(getBusiness));
 
 // GET /api/business/:id/subscription-status
-// Get subscription details for a business
 router.get('/:id/subscription-status', authMiddleware, asyncHandler(getSubscriptionStatusDetails));
 
 // PUT /api/business/:id
-// Update business
 router.put('/:id', authMiddleware, asyncHandler(updateBusiness));
 
 // DELETE /api/business/:id
-// Delete business (super-admin only)
 router.delete('/:id', authMiddleware, requireSuperAdmin, asyncHandler(deleteBusiness));
 
 // POST /api/business/:id/toggle-status
-// Suspend or reactivate a business
 router.post('/:id/toggle-status', authMiddleware, requireSuperAdmin, asyncHandler(toggleBusinessStatus));
 
 // POST /api/business/:id/update-subscription
-// Update subscription plan and expiry
 router.post('/:id/update-subscription', authMiddleware, requireSuperAdmin, asyncHandler(updateSubscription));
 
 // POST /api/business/:id/start-trial
-// Start 14-day free trial
 router.post('/:id/start-trial', authMiddleware, requireSuperAdmin, asyncHandler(startFreeTrial));
 
 module.exports = router;

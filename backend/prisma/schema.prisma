@@ -1,57 +1,62 @@
 // backend/prisma/schema.prisma
-// Multi-tenant architecture with Business entity and Subscription Management
+// Run after any changes:
+//   npx prisma migrate dev --name add_storefront_fields
+//   npx prisma generate
 
 generator client {
   provider = "prisma-client-js"
 }
 
 datasource db {
-  provider = "postgresql"
-  url      = env("DATABASE_URL")
+  provider  = "postgresql"
+  url       = env("DATABASE_URL")
   directUrl = env("DIRECT_URL")
 }
 
 // ============================================================================
-// BUSINESS MODEL (Multi-tenant core with Subscription Management)
+// BUSINESS MODEL
 // ============================================================================
 model Business {
   id                  Int      @id @default(autoincrement())
-  slug                String   @unique  // Subdomain: chrenisfarm, houseofqg, etc.
+  slug                String   @unique
   businessName        String
   businessType        String   @default("food")
-  
-  // ✅ SUBSCRIPTION & STATUS MANAGEMENT (Enhanced)
+
+  // Status & subscription
   isActive            Boolean  @default(true)
   suspendedAt         DateTime?
   suspensionReason    String?
-  
-  // ✅ NEW: Comprehensive Subscription Fields
-  subscriptionPlan    String   @default("none")  // none, free_trial, monthly, annual
-  subscriptionStartDate DateTime?               // When paid subscription started
-  subscriptionExpiry  DateTime?                 // When subscription expires
-  trialStartDate      DateTime?                 // When free trial started
-  trialEndsAt         DateTime?                 // When 14-day trial ends
-  lastPaymentDate     DateTime?                 // Date of last payment
-  subscriptionNotes   String?                   // Admin notes about subscription
-  
+  subscriptionPlan    String   @default("none")
+  subscriptionStartDate DateTime?
+  subscriptionExpiry  DateTime?
+  trialStartDate      DateTime?
+  trialEndsAt         DateTime?
+  lastPaymentDate     DateTime?
+  subscriptionNotes   String?
+
   businessMotto       String?
   phone               String
   email               String?
   address             String?
   description         String?
   logo                String?
-  
+
+  // ✅ NEW: Storefront display fields
+  businessHours       String?           // e.g. "Mon–Fri: 9am–6pm"
+  taxRate             Float    @default(0)
+  deliveryFee         Float    @default(0)
+
   // Theme
   primaryColor        String   @default("#10B981")
   secondaryColor      String   @default("#F59E0B")
-  
+
   // Localization
   currency            String   @default("NGN")
   language            String   @default("en")
   supportedLanguages  Json?
   autoDetectLanguage  Boolean  @default(true)
   defaultLanguage     String   @default("en")
-  
+
   // Contact & Social
   whatsappNumber      String
   facebookUrl         String?
@@ -60,23 +65,23 @@ model Business {
   youtubeUrl          String?
   linkedinUrl         String?
   tiktokUrl           String?
-  
+
   // Footer
   footerText          String?
   footerCopyright     String?  @default("© {year} All rights reserved.")
   footerAddress       String?
   footerEmail         String?
   footerPhone         String?
-  
+
   createdAt           DateTime @default(now())
   updatedAt           DateTime @updatedAt
-  
+
   // Relationships
   users               User[]
   products            Product[]
   orders              Order[]
   notifications       Notification[]
-  
+
   @@index([slug])
   @@index([isActive])
   @@index([subscriptionExpiry])
@@ -85,27 +90,25 @@ model Business {
 }
 
 // ============================================================================
-// USER MODEL (with businessId)
+// USER MODEL
 // ============================================================================
 model User {
   id           Int       @id @default(autoincrement())
   email        String    @unique
   passwordHash String
-  role         String    @default("staff")  // super-admin, admin, staff
+  role         String    @default("staff")
   active       Boolean   @default(true)
   firstName    String?
   lastName     String?
   phone        String?
   lastLogin    DateTime?
-  
-  // Multi-tenant link
-  businessId   Int?      // NULL for super-admin, required for admin/staff
+
+  businessId   Int?
   business     Business? @relation(fields: [businessId], references: [id], onDelete: Cascade)
-  
+
   createdAt    DateTime  @default(now())
   updatedAt    DateTime  @updatedAt
-  
-  // Relationships
+
   confirmedPayments Order[] @relation("PaymentConfirmer")
 
   @@index([email])
@@ -115,7 +118,7 @@ model User {
 }
 
 // ============================================================================
-// PRODUCT MODEL (with businessId)
+// PRODUCT MODEL
 // ============================================================================
 model Product {
   id          Int         @id @default(autoincrement())
@@ -125,14 +128,17 @@ model Product {
   description String?
   imageUrl    String?
   featured    Boolean     @default(false)
-  
-  // Multi-tenant link
+
+  // ✅ NEW: Storefront fields
+  isAvailable Boolean     @default(true)   // controls visibility in storefront
+  category    String?                       // used for category filter tabs
+
   businessId  Int
   business    Business    @relation(fields: [businessId], references: [id], onDelete: Cascade)
-  
+
   createdAt   DateTime    @default(now())
   updatedAt   DateTime    @updatedAt
-  
+
   ratings     ProductRating[]
   orderItems  OrderItem[]
   images      ProductImage[]
@@ -141,10 +147,12 @@ model Product {
   @@index([stock])
   @@index([featured])
   @@index([businessId])
+  @@index([isAvailable])   // ✅ NEW
+  @@index([category])      // ✅ NEW
 }
 
 // ============================================================================
-// ORDER MODEL (with businessId)
+// ORDER MODEL
 // ============================================================================
 model Order {
   id                  Int         @id @default(autoincrement())
@@ -163,11 +171,10 @@ model Order {
   statusHistory       Json?
   currency            String      @default("NGN")
   notes               String?
-  
-  // Multi-tenant link
+
   businessId          Int
   business            Business    @relation(fields: [businessId], references: [id], onDelete: Cascade)
-  
+
   createdAt           DateTime    @default(now())
   updatedAt           DateTime    @updatedAt
   items               OrderItem[]
@@ -180,13 +187,13 @@ model Order {
 }
 
 model OrderItem {
-  id          Int     @id @default(autoincrement())
-  orderId     Int
-  productId   Int
-  quantity    Int
-  unitPrice   Float
-  order       Order   @relation(fields: [orderId], references: [id], onDelete: Cascade)
-  product     Product @relation(fields: [productId], references: [id])
+  id        Int     @id @default(autoincrement())
+  orderId   Int
+  productId Int
+  quantity  Int
+  unitPrice Float
+  order     Order   @relation(fields: [orderId], references: [id], onDelete: Cascade)
+  product   Product @relation(fields: [productId], references: [id])
 
   @@index([orderId])
   @@index([productId])
@@ -194,7 +201,6 @@ model OrderItem {
 
 // ============================================================================
 // DEPRECATED: BusinessSettings (keeping for backward compatibility)
-// This will be migrated to Business model
 // ============================================================================
 model BusinessSettings {
   id                Int      @id @default(autoincrement())
@@ -234,13 +240,13 @@ model BusinessSettings {
 // SUPPORTING MODELS
 // ============================================================================
 model ProductRating {
-  id          Int      @id @default(autoincrement())
-  productId   Int
-  phone       String
-  rating      Int
-  comment     String?
-  createdAt   DateTime @default(now())
-  product     Product  @relation(fields: [productId], references: [id], onDelete: Cascade)
+  id        Int      @id @default(autoincrement())
+  productId Int
+  phone     String
+  rating    Int
+  comment   String?
+  createdAt DateTime @default(now())
+  product   Product  @relation(fields: [productId], references: [id], onDelete: Cascade)
 
   @@unique([productId, phone])
   @@index([productId])
@@ -249,7 +255,7 @@ model ProductRating {
 
 model Notification {
   id         Int       @id @default(autoincrement())
-  type       String    // 'order', 'payment', 'stock', 'system', 'subscription'
+  type       String
   title      String
   message    String
   link       String?
@@ -257,53 +263,49 @@ model Notification {
   productId  Int?
   read       Boolean   @default(false)
   readAt     DateTime?
-  
-  // Multi-tenant link
+
   businessId Int?
   business   Business? @relation(fields: [businessId], references: [id], onDelete: Cascade)
-  
+
   createdAt  DateTime  @default(now())
-  
+
   @@index([read])
   @@index([createdAt])
   @@index([businessId])
 }
 
 model ProductImage {
-  id          Int      @id @default(autoincrement())
-  productId   Int
-  imageUrl    String
-  order       Int      @default(0)
-  isPrimary   Boolean  @default(false)
-  createdAt   DateTime @default(now())
-  product     Product  @relation(fields: [productId], references: [id], onDelete: Cascade)
+  id        Int      @id @default(autoincrement())
+  productId Int
+  imageUrl  String
+  order     Int      @default(0)
+  isPrimary Boolean  @default(false)
+  createdAt DateTime @default(now())
+  product   Product  @relation(fields: [productId], references: [id], onDelete: Cascade)
 
   @@index([productId])
   @@index([order])
 }
 
 model OnboardingRequest {
-  id              Int       @id @default(autoincrement())
-  businessName    String
-  businessType    String
-  ownerName       String
-  ownerEmail      String
-  ownerPhone      String
-  description     String?
-  preferredSlug   String?
-
-  // For storing credentials after approval
-  adminCreated    Boolean   @default(false)
-  adminUserId     Int?
+  id                Int       @id @default(autoincrement())
+  businessName      String
+  businessType      String
+  ownerName         String
+  ownerEmail        String
+  ownerPhone        String
+  description       String?
+  preferredSlug     String?
+  adminCreated      Boolean   @default(false)
+  adminUserId       Int?
   temporaryPassword String?
-  
-  status          String    @default("pending") // pending, approved, rejected
-  reviewedBy      Int?
-  reviewedAt      DateTime?
-  rejectionReason String?
-  createdAt       DateTime  @default(now())
-  updatedAt       DateTime  @updatedAt
-  
+  status            String    @default("pending")
+  reviewedBy        Int?
+  reviewedAt        DateTime?
+  rejectionReason   String?
+  createdAt         DateTime  @default(now())
+  updatedAt         DateTime  @updatedAt
+
   @@index([status])
   @@index([createdAt])
 }

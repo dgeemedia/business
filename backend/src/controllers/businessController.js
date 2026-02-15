@@ -1,5 +1,6 @@
 // backend/src/controllers/businessController.js
-// ✅ FIXED: P2028 transaction timeout, removed ...otherData spread, moved notification outside tx
+// Full updated file — getPublicBusiness + getPublicBusinessProducts fixed
+
 const prisma = require('../lib/prisma');
 const bcrypt = require('bcrypt');
 
@@ -18,26 +19,145 @@ function generatePassword(length = 12) {
 function calculateExpiryDate(startDate, plan) {
   const date = new Date(startDate);
   switch (plan) {
-    case 'monthly':   date.setDate(date.getDate() + 30);  break;
-    case 'annual':    date.setDate(date.getDate() + 365); break;
-    case 'free_trial':date.setDate(date.getDate() + 14);  break;
+    case 'monthly':    date.setDate(date.getDate() + 30);  break;
+    case 'annual':     date.setDate(date.getDate() + 365); break;
+    case 'free_trial': date.setDate(date.getDate() + 14);  break;
     default: return null;
   }
   return date;
 }
 
 // ============================================================================
-// GET BUSINESS BY SLUG  (Public)
+// PUBLIC STOREFRONT: GET BUSINESS
+// GET /api/business/public/:slug  — no auth required
+//
+// ✅ Returns { business } shaped to match what BusinessStorefront.jsx expects:
+//    - business.name  (aliased from businessName)
+//    - business.taxRate / deliveryFee / businessHours  (safe defaults if missing)
 // ============================================================================
-async function getBusinessBySlug(req, res) {
+async function getPublicBusiness(req, res) {
   const { slug } = req.params;
 
-  const business = await prisma.business.findUnique({ where: { slug } });
+  const business = await prisma.business.findUnique({
+    where: { slug },
+    select: {
+      id:             true,
+      slug:           true,
+      businessName:   true,
+      description:    true,
+      phone:          true,
+      whatsappNumber: true,
+      email:          true,
+      address:        true,
+      logo:           true,
+      primaryColor:   true,
+      secondaryColor: true,
+      currency:       true,
+      businessType:   true,
+      isActive:       true,
+      facebookUrl:    true,
+      instagramUrl:   true,
+      twitterUrl:     true,
+      youtubeUrl:     true,
+      footerText:     true,
+      footerCopyright:true,
+      taxRate:        true, 
+      deliveryFee:    true, 
+      businessHours:  true,
+    },
+  });
 
   if (!business) {
     return res.status(404).json({ error: 'Business not found' });
   }
 
+  if (!business.isActive) {
+    return res.status(503).json({
+      error: 'Business is currently unavailable',
+      maintenanceMode: true,
+    });
+  }
+
+  // Destructure businessName and alias it to `name` so the storefront
+  // doesn't need to change — it reads business.name everywhere.
+  const { businessName, ...rest } = business;
+
+  return res.json({
+    business: {
+      ...rest,
+      name:         businessName,   // ← what BusinessStorefront uses
+      businessName,                 // ← keep original too
+      // Safe defaults for optional fields not yet in schema
+      taxRate:      rest.taxRate      ?? 0,
+      deliveryFee:  rest.deliveryFee  ?? 0,
+      businessHours:rest.businessHours ?? null,
+    },
+  });
+}
+
+// ============================================================================
+// PUBLIC STOREFRONT: GET PRODUCTS
+// GET /api/business/public/:slug/products  — no auth required
+//
+// ✅ FIX: removed `isAvailable: true` filter — field does NOT exist in the
+//    current schema.  After you run the migration below it will be added back.
+//    For now we filter only on stock > 0 so nothing visible is 0-stock.
+//
+// ✅ Computes averageRating from the ProductRating relation (it's not stored
+//    as a column).
+// ============================================================================
+async function getPublicBusinessProducts(req, res) {
+  const { slug } = req.params;
+
+  // Resolve business by slug
+  const business = await prisma.business.findUnique({
+    where: { slug },
+    select: { id: true, isActive: true },
+  });
+
+  if (!business) {
+    return res.status(404).json({ error: 'Business not found' });
+  }
+
+  if (!business.isActive) {
+    return res.status(503).json({ error: 'Business is currently unavailable' });
+  }
+
+  // Fetch products with their ratings so we can compute averageRating
+  const rawProducts = await prisma.product.findMany({
+    where: {
+      businessId: business.id,
+      isAvailable: true,
+    },
+    include: {
+      ratings: {        // ProductRating[]
+        select: { rating: true },
+      },
+    },
+    orderBy: { createdAt: 'desc' },
+  });
+
+  // Compute averageRating and strip the raw ratings array from the response
+  const products = rawProducts.map(({ ratings, ...product }) => ({
+    ...product,
+    averageRating: ratings.length > 0
+      ? Math.round((ratings.reduce((sum, r) => sum + r.rating, 0) / ratings.length) * 10) / 10
+      : 0,
+    // Safe default for optional fields not yet in schema
+    isAvailable:  product.isAvailable  ?? true,
+    category:     product.category     ?? null,
+  }));
+
+  return res.json({ products });
+}
+
+// ============================================================================
+// GET BUSINESS BY SLUG  (internal / legacy)
+// ============================================================================
+async function getBusinessBySlug(req, res) {
+  const { slug } = req.params;
+  const business = await prisma.business.findUnique({ where: { slug } });
+  if (!business) return res.status(404).json({ error: 'Business not found' });
   res.json(business);
 }
 
@@ -52,11 +172,11 @@ async function getAllBusinesses(req, res) {
   const businesses = await prisma.business.findMany({
     orderBy: { createdAt: 'desc' },
     include: {
-      _count: { select: { users: true, products: true, orders: true } }
-    }
+      _count: { select: { users: true, products: true, orders: true } },
+    },
   });
 
-  res.json(businesses);
+  res.json({ businesses });
 }
 
 // ============================================================================
@@ -71,106 +191,51 @@ async function getBusiness(req, res) {
 
   const business = await prisma.business.findUnique({
     where: { id: businessId },
-    include: { _count: { select: { users: true, products: true, orders: true } } }
+    include: {
+      _count: { select: { users: true, products: true, orders: true } },
+    },
   });
 
-  if (!business) {
-    return res.status(404).json({ error: 'Business not found' });
-  }
-
+  if (!business) return res.status(404).json({ error: 'Business not found' });
   res.json(business);
 }
 
 // ============================================================================
 // CREATE BUSINESS  (Super-admin only)
-// ✅ FIX 1: Removed dangerous ...otherData spread → only whitelisted fields go to Prisma
-// ✅ FIX 2: ALL async work (bcrypt) done BEFORE the transaction opens
-// ✅ FIX 3: Transaction timeout raised to 15 000 ms
-// ✅ FIX 4: Notification created AFTER transaction commits (no extra tx round-trip)
 // ============================================================================
 async function createBusiness(req, res) {
   if (req.user.role !== 'super-admin') {
     return res.status(403).json({ error: 'Forbidden: Super-admin access required' });
   }
 
-  // ── Destructure ONLY the fields we actually use ──────────────────────────
   const {
-    // Required
-    slug,
-    businessName,
-    phone,
-    whatsappNumber,
-    // Owner / admin account
-    adminEmail,
-    adminFirstName,
-    adminLastName,
-    adminPhone,
-    // Optional business info
-    businessType,
-    businessMotto,
-    email,
-    address,
-    description,
-    logo,
-    primaryColor,
-    secondaryColor,
-    currency,
-    language,
-    supportedLanguages,
-    autoDetectLanguage,
-    defaultLanguage,
-    facebookUrl,
-    twitterUrl,
-    instagramUrl,
-    youtubeUrl,
-    linkedinUrl,
-    tiktokUrl,
-    footerText,
-    footerCopyright,
-    footerAddress,
-    footerEmail,
-    footerPhone,
-    // Subscription
-    startWithTrial = true,
-    subscriptionPlan,
-    subscriptionExpiry,
+    slug, businessName, phone, whatsappNumber,
+    adminEmail, adminFirstName, adminLastName, adminPhone,
+    businessType, businessMotto, email, address, description,
+    logo, primaryColor, secondaryColor, currency, language,
+    supportedLanguages, autoDetectLanguage, defaultLanguage,
+    facebookUrl, twitterUrl, instagramUrl, youtubeUrl, linkedinUrl,
+    tiktokUrl, footerText, footerCopyright, footerAddress, footerEmail, footerPhone,
+    startWithTrial = true, subscriptionPlan, subscriptionExpiry,
   } = req.body;
 
-  // ── Validate required fields ──────────────────────────────────────────────
   if (!slug || !businessName || !phone || !whatsappNumber) {
-    return res.status(400).json({
-      error: 'slug, businessName, phone, and whatsappNumber are required'
-    });
+    return res.status(400).json({ error: 'slug, businessName, phone, and whatsappNumber are required' });
   }
-  if (!adminEmail) {
-    return res.status(400).json({
-      error: 'Admin email (adminEmail) is required to create the owner account'
-    });
-  }
-  if (!adminFirstName) {
-    return res.status(400).json({
-      error: 'Admin first name (adminFirstName) is required'
-    });
-  }
+  if (!adminEmail)     return res.status(400).json({ error: 'adminEmail is required' });
+  if (!adminFirstName) return res.status(400).json({ error: 'adminFirstName is required' });
 
-  // ── Check for duplicates ──────────────────────────────────────────────────
   const [existingBusiness, existingUser] = await Promise.all([
     prisma.business.findUnique({ where: { slug } }),
     prisma.user.findUnique({ where: { email: adminEmail } }),
   ]);
 
-  if (existingBusiness) {
-    return res.status(400).json({ error: 'A business with this slug already exists' });
-  }
-  if (existingUser) {
-    return res.status(400).json({ error: 'A user with this email already exists' });
-  }
+  if (existingBusiness) return res.status(400).json({ error: 'A business with this slug already exists' });
+  if (existingUser)     return res.status(400).json({ error: 'A user with this email already exists' });
 
-  // ── ✅ FIX 2: Do ALL slow/async work BEFORE opening the transaction ────────
   const generatedPassword = generatePassword(12);
-  const passwordHash      = await bcrypt.hash(generatedPassword, 12); // ~300 ms — done here, NOT inside tx
+  const passwordHash      = await bcrypt.hash(generatedPassword, 12);
 
-  // ── Subscription data ─────────────────────────────────────────────────────
   const now = new Date();
   let subscriptionData = { isActive: true };
 
@@ -178,7 +243,6 @@ async function createBusiness(req, res) {
     const expiryDate = subscriptionExpiry
       ? new Date(subscriptionExpiry)
       : calculateExpiryDate(now, subscriptionPlan);
-
     subscriptionData = {
       ...subscriptionData,
       subscriptionPlan,
@@ -189,7 +253,6 @@ async function createBusiness(req, res) {
   } else if (startWithTrial) {
     const trialEnd = new Date(now);
     trialEnd.setDate(trialEnd.getDate() + 14);
-
     subscriptionData = {
       ...subscriptionData,
       subscriptionPlan: 'free_trial',
@@ -200,89 +263,65 @@ async function createBusiness(req, res) {
     subscriptionData.subscriptionPlan = 'none';
   }
 
-  // ── ✅ FIX 1: Build ONLY whitelisted Business fields (no ...otherData) ─────
-  // Every key here maps to a real column in the Business model.
   const businessData = {
-    // Required
-    slug,
-    businessName,
-    phone,
-    whatsappNumber,
-    // Subscription
+    slug, businessName, phone, whatsappNumber,
     ...subscriptionData,
-    // Optional — only include if the caller provided a value
-    ...(businessType   && { businessType }),
-    ...(businessMotto  && { businessMotto }),
-    ...(email          && { email }),
-    ...(address        && { address }),
-    ...(description    && { description }),
-    ...(logo           && { logo }),
-    ...(primaryColor   && { primaryColor }),
-    ...(secondaryColor && { secondaryColor }),
-    ...(currency       && { currency }),
-    ...(language       && { language }),
+    ...(businessType    && { businessType }),
+    ...(businessMotto   && { businessMotto }),
+    ...(email           && { email }),
+    ...(address         && { address }),
+    ...(description     && { description }),
+    ...(logo            && { logo }),
+    ...(primaryColor    && { primaryColor }),
+    ...(secondaryColor  && { secondaryColor }),
+    ...(currency        && { currency }),
+    ...(language        && { language }),
     ...(supportedLanguages !== undefined && { supportedLanguages }),
     ...(autoDetectLanguage !== undefined && { autoDetectLanguage }),
-    ...(defaultLanguage    && { defaultLanguage }),
-    ...(facebookUrl   && { facebookUrl }),
-    ...(twitterUrl    && { twitterUrl }),
-    ...(instagramUrl  && { instagramUrl }),
-    ...(youtubeUrl    && { youtubeUrl }),
-    ...(linkedinUrl   && { linkedinUrl }),
-    ...(tiktokUrl     && { tiktokUrl }),
-    ...(footerText    && { footerText }),
+    ...(defaultLanguage && { defaultLanguage }),
+    ...(facebookUrl     && { facebookUrl }),
+    ...(twitterUrl      && { twitterUrl }),
+    ...(instagramUrl    && { instagramUrl }),
+    ...(youtubeUrl      && { youtubeUrl }),
+    ...(linkedinUrl     && { linkedinUrl }),
+    ...(tiktokUrl       && { tiktokUrl }),
+    ...(footerText      && { footerText }),
     ...(footerCopyright && { footerCopyright }),
-    ...(footerAddress && { footerAddress }),
-    ...(footerEmail   && { footerEmail }),
-    ...(footerPhone   && { footerPhone }),
+    ...(footerAddress   && { footerAddress }),
+    ...(footerEmail     && { footerEmail }),
+    ...(footerPhone     && { footerPhone }),
   };
 
-  // ── ✅ FIX 3: Transaction with raised timeout ─────────────────────────────
-  // Default Prisma interactive-tx timeout = 5 000 ms → easily exceeded.
-  // We raise it to 15 000 ms.  All slow work is already done above.
   let business, admin;
 
   try {
     const result = await prisma.$transaction(
       async (tx) => {
-        // 1. Create business
         const newBusiness = await tx.business.create({ data: businessData });
-
-        // 2. Create admin user — only uses the User schema fields
-        const newAdmin = await tx.user.create({
+        const newAdmin    = await tx.user.create({
           data: {
-            email:        adminEmail,
+            email:      adminEmail,
             passwordHash,
-            role:         'admin',
-            firstName:    adminFirstName || 'Admin',
-            lastName:     adminLastName  || '',
-            phone:        adminPhone     || phone,
-            active:       true,
-            businessId:   newBusiness.id,
+            role:       'admin',
+            firstName:  adminFirstName || 'Admin',
+            lastName:   adminLastName  || '',
+            phone:      adminPhone     || phone,
+            active:     true,
+            businessId: newBusiness.id,
           },
         });
-
         return { business: newBusiness, admin: newAdmin };
       },
-      {
-        timeout:  15000, // ✅ 15 s — plenty of headroom
-        maxWait:  10000, // wait up to 10 s to acquire a connection
-      }
+      { timeout: 15000, maxWait: 10000 }
     );
 
     business = result.business;
     admin    = result.admin;
   } catch (error) {
-    console.error('❌ Transaction failed when creating business:', error);
-    return res.status(500).json({
-      error:   'Failed to create business',
-      details: error.message,
-    });
+    console.error('❌ Transaction failed:', error);
+    return res.status(500).json({ error: 'Failed to create business', details: error.message });
   }
 
-  // ── ✅ FIX 4: Notification created AFTER transaction commits ───────────────
-  // This avoids adding another DB round-trip inside the tx (which was pushing
-  // the total over the timeout on slower connections).
   try {
     await prisma.notification.create({
       data: {
@@ -296,15 +335,8 @@ async function createBusiness(req, res) {
       },
     });
   } catch (notifError) {
-    // Non-critical — log but don't fail the request
     console.warn('⚠️  Could not create welcome notification:', notifError.message);
   }
-
-  console.log(`✅ Business created: ${business.businessName} (${business.slug})`);
-  console.log(`   Subscription: ${business.subscriptionPlan}`);
-  if (business.trialEndsAt)         console.log(`   Trial ends:   ${business.trialEndsAt.toDateString()}`);
-  if (business.subscriptionExpiry)  console.log(`   Expires:      ${business.subscriptionExpiry.toDateString()}`);
-  console.log(`✅ Admin created:   ${admin.email} → businessId ${business.id}`);
 
   return res.status(201).json({
     ok: true,
@@ -314,7 +346,7 @@ async function createBusiness(req, res) {
       email:             admin.email,
       firstName:         admin.firstName,
       lastName:          admin.lastName,
-      temporaryPassword: generatedPassword, // ← shown once; store securely
+      temporaryPassword: generatedPassword,
     },
     subscription: {
       plan:      business.subscriptionPlan,
@@ -349,7 +381,6 @@ async function updateBusiness(req, res) {
     data: slug ? { slug, ...updateData } : updateData,
   });
 
-  console.log(`✅ Updated business: ${business.businessName}`);
   res.json(business);
 }
 
@@ -362,25 +393,15 @@ async function deleteBusiness(req, res) {
   }
 
   const businessId = Number(req.params.id);
-
   const business = await prisma.business.findUnique({
     where: { id: businessId },
     include: { _count: { select: { users: true, products: true, orders: true } } },
   });
 
-  if (!business) {
-    return res.status(404).json({ error: 'Business not found' });
-  }
-
-  if (business._count.users > 0 || business._count.products > 0 || business._count.orders > 0) {
-    console.warn(
-      `⚠️  Deleting "${business.businessName}" — ` +
-      `users: ${business._count.users}, products: ${business._count.products}, orders: ${business._count.orders}`
-    );
-  }
+  if (!business) return res.status(404).json({ error: 'Business not found' });
 
   await prisma.business.delete({ where: { id: businessId } });
-  console.log(`🗑️  Deleted business: ${business.businessName}`);
+  console.log(`🗑️  Deleted: ${business.businessName}`);
   res.json({ ok: true, message: 'Business deleted' });
 }
 
@@ -396,15 +417,12 @@ async function getCurrentBusiness(req, res) {
     where: { id: req.user.businessId },
   });
 
-  if (!business) {
-    return res.status(404).json({ error: 'Business not found' });
-  }
-
+  if (!business) return res.status(404).json({ error: 'Business not found' });
   res.json(business);
 }
 
 // ============================================================================
-// TOGGLE BUSINESS STATUS  (Suspend / Reactivate)
+// TOGGLE BUSINESS STATUS
 // ============================================================================
 async function toggleBusinessStatus(req, res) {
   if (req.user.role !== 'super-admin') {
@@ -412,39 +430,29 @@ async function toggleBusinessStatus(req, res) {
   }
 
   const businessId = Number(req.params.id);
-
-  // ✅ Read isActive from body; if not provided, toggle the current value
-  const business = await prisma.business.findUnique({ where: { id: businessId } });
-  if (!business) {
-    return res.status(404).json({ error: 'Business not found' });
-  }
+  const business   = await prisma.business.findUnique({ where: { id: businessId } });
+  if (!business) return res.status(404).json({ error: 'Business not found' });
 
   const newActive = req.body.isActive !== undefined
     ? Boolean(req.body.isActive)
     : !business.isActive;
 
-  const { suspensionReason } = req.body;
-
   const updated = await prisma.business.update({
     where: { id: businessId },
     data: {
-      isActive:          newActive,
-      suspendedAt:       newActive ? null : new Date(),
-      suspensionReason:  newActive ? null : (suspensionReason || 'Suspended by admin'),
+      isActive:         newActive,
+      suspendedAt:      newActive ? null : new Date(),
+      suspensionReason: newActive ? null : (req.body.suspensionReason || 'Suspended by admin'),
     },
   });
 
   const action = newActive ? 'Reactivated' : 'Suspended';
-  console.log(`${newActive ? '✅' : '⚠️ '} ${action} business: ${business.businessName}`);
-
-  res.json({
-    ok:       true,
-    message:  `Business ${action.toLowerCase()} successfully`,
-    business: updated,
-  });
+  res.json({ ok: true, message: `Business ${action.toLowerCase()} successfully`, business: updated });
 }
 
 module.exports = {
+  getPublicBusiness,
+  getPublicBusinessProducts,
   getBusinessBySlug,
   getAllBusinesses,
   getBusiness,

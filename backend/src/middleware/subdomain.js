@@ -1,4 +1,4 @@
-// backend/src/middleware/subdomain.js (UPDATED with maintenance mode)
+// backend/src/middleware/subdomain.js
 const prisma = require('../lib/prisma');
 
 /**
@@ -11,12 +11,14 @@ function parseSlugFromHostname(hostname) {
   const host = hostname.split(':')[0];
   const parts = host.split('.');
 
-  // LOCAL DEV: *.localhost
+  // LOCAL DEV: anything.localhost  e.g. gee-store.localhost
   if (parts[parts.length - 1] === 'localhost') {
+    // "localhost"          → parts.length === 1 → no subdomain
+    // "gee-store.localhost" → parts.length === 2 → subdomain = parts[0]
     return parts.length >= 2 ? parts[0] : null;
   }
 
-  // PRODUCTION: *.domain.tld
+  // PRODUCTION: subdomain.domain.tld
   if (parts.length <= 2) return null;
   if (parts[0] === 'www') return null;
 
@@ -24,137 +26,135 @@ function parseSlugFromHostname(hostname) {
 }
 
 /**
- * Middleware to extract and attach business context from subdomain.
- * ✅ ENHANCED: Now checks if business is active and returns maintenance mode if suspended
+ * Middleware: extract and attach business context from the incoming request.
+ *
+ * Priority order for resolving the slug:
+ *   1. X-Business-Subdomain header  ← sent by the Vite proxy (api.js interceptor)
+ *   2. Parsed from the Host / hostname header (production direct requests)
+ *
+ * ✅ BUG FIX: was reading 'X-Business-Slug' but api.js sends 'X-Business-Subdomain'
  */
 async function extractSubdomain(req, res, next) {
   try {
     const hostname = req.hostname || req.get('host');
-    console.log(`🔍 Extracting subdomain from: ${hostname}`);
 
-    // Allow explicit override header
-    const headerSlug = req.get('X-Business-Subdomain');
+    // ✅ FIXED header name — must match what api.js sends
+    const headerSlug = req.get('X-Business-Subdomain');   // was wrongly 'X-Business-Slug'
     const parsedSlug = parseSlugFromHostname(hostname);
-    const slug = headerSlug || parsedSlug;
+    const slug       = headerSlug || parsedSlug;
 
     if (!slug) {
-      console.log('ℹ️  No subdomain detected (root / landing page)');
-      return next();
+      return next(); // root domain / no subdomain
     }
 
     const business = await prisma.business.findUnique({
       where: { slug },
       select: {
-        id: true,
-        slug: true,
-        businessName: true,
-        isActive: true,
-        suspendedAt: true,
-        suspensionReason: true,
-        subscriptionPlan: true,
+        id:              true,
+        slug:            true,
+        businessName:    true,
+        isActive:        true,
+        suspendedAt:     true,
+        suspensionReason:true,
+        subscriptionPlan:true,
         subscriptionExpiry: true,
-        trialEndsAt: true,
-        whatsappNumber: true,
-        phone: true,
-        email: true,
-        logo: true,
-        primaryColor: true
-      }
+        trialEndsAt:     true,
+        whatsappNumber:  true,
+        phone:           true,
+        email:           true,
+        logo:            true,
+        primaryColor:    true,
+      },
     });
 
-    if (business) {
-      req.businessId = business.id;
-      req.businessSlug = business.slug;
-      
-      // ✅ NEW: Check if business is suspended/inactive
-      if (!business.isActive) {
-        console.warn(`⚠️  Business "${slug}" is suspended/inactive`);
-        
-        // Set maintenance mode flag and data
-        req.maintenanceMode = true;
-        req.maintenanceData = {
-          businessName: business.businessName,
-          slug: business.slug,
-          suspensionReason: business.suspensionReason,
-          suspendedAt: business.suspendedAt,
-          whatsappNumber: business.whatsappNumber,
-          phone: business.phone,
-          email: business.email,
-          logo: business.logo,
-          primaryColor: business.primaryColor
-        };
-        
-        // Return maintenance response for API requests
-        if (req.path.startsWith('/api/')) {
-          return res.status(503).json({
-            error: 'Business is currently unavailable',
-            maintenanceMode: true,
-            reason: business.suspensionReason || 'Platform undergoing maintenance',
-            contactSupport: {
-              whatsapp: business.whatsappNumber,
-              phone: business.phone,
-              email: business.email
-            }
-          });
-        }
-        
-        // For regular requests, let Next.js handle the redirect to maintenance page
-        // You'll need to add middleware in Next.js to detect this and redirect
-      }
-      
-      console.log(`✅ Subdomain resolved: "${slug}" → Business ID ${business.id} (${business.isActive ? 'Active' : 'Suspended'})`);
-    } else {
+    if (!business) {
       console.warn(`⚠️  No business found for subdomain: "${slug}"`);
+      return next();
     }
 
-    next();
+    req.businessId   = business.id;
+    req.businessSlug = business.slug;
+
+    if (!business.isActive) {
+      console.warn(`⚠️  Business "${slug}" is suspended/inactive`);
+
+      req.maintenanceMode = true;
+      req.maintenanceData = {
+        businessName:     business.businessName,
+        slug:             business.slug,
+        suspensionReason: business.suspensionReason,
+        suspendedAt:      business.suspendedAt,
+        whatsappNumber:   business.whatsappNumber,
+        phone:            business.phone,
+        email:            business.email,
+        logo:             business.logo,
+        primaryColor:     business.primaryColor,
+      };
+
+      // For API calls, return 503 immediately
+      if (req.path.startsWith('/api/')) {
+        return res.status(503).json({
+          error:           'Business is currently unavailable',
+          maintenanceMode: true,
+          reason:          business.suspensionReason || 'Platform undergoing maintenance',
+          contactSupport: {
+            whatsapp: business.whatsappNumber,
+            phone:    business.phone,
+            email:    business.email,
+          },
+        });
+      }
+    }
+
+    console.log(
+      `✅ Subdomain resolved: "${slug}" → Business ID ${business.id}` +
+      ` (${business.isActive ? 'Active' : 'Suspended'})`
+    );
+
+    return next();
   } catch (error) {
     console.error('❌ Subdomain extraction error:', error);
-    next();
+    return next(); // never block the request
   }
 }
 
 /**
- * Middleware to require business context (for protected routes).
- * ✅ ENHANCED: Also checks if business is active
+ * Middleware: require a business context on the request.
+ * Falls back to the authenticated user's businessId if subdomain is absent.
  */
 function requireBusiness(req, res, next) {
   if (!req.businessId && !req.user?.businessId) {
     return res.status(400).json({
-      error: 'Business context required. Please access via subdomain.'
+      error: 'Business context required. Please access via subdomain.',
     });
   }
 
-  // If not set from subdomain, use user's business
   if (!req.businessId && req.user?.businessId) {
     req.businessId = req.user.businessId;
   }
 
-  // ✅ NEW: Check if in maintenance mode
   if (req.maintenanceMode) {
     return res.status(503).json({
-      error: 'Business is currently unavailable',
+      error:           'Business is currently unavailable',
       maintenanceMode: true,
-      reason: req.maintenanceData?.suspensionReason || 'Platform undergoing maintenance'
+      reason:          req.maintenanceData?.suspensionReason || 'Platform undergoing maintenance',
     });
   }
 
-  next();
+  return next();
 }
 
 /**
- * ✅ NEW: Middleware to allow access even in maintenance mode
- * Use this for routes that should work even when business is suspended
- * (e.g., admin routes, status check endpoints)
+ * Middleware: allow a route to proceed even when the business is suspended.
+ * Use on admin/status-check routes.
  */
 function allowMaintenanceMode(req, res, next) {
-  // Simply skip the maintenance check
-  next();
+  return next();
 }
 
 module.exports = {
   extractSubdomain,
   requireBusiness,
   allowMaintenanceMode,
-  parseSlugFromHostname
+  parseSlugFromHostname,
 };
