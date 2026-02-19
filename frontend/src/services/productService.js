@@ -39,16 +39,23 @@ const productService = {
   },
 
   // Upload product image
+  // ✅ FIX: backend returns { imageUrl, ok, filename } — was reading .url (undefined)
   uploadImage: async (file) => {
     const formData = new FormData();
-    formData.append('image', file);
+    formData.append('image', file); // ✅ must match upload.single('image')
     
     const response = await api.post('/api/upload', formData, {
       headers: {
         'Content-Type': 'multipart/form-data',
       },
     });
-    return response.data;
+
+    // Normalise: return { url } so callers do uploadedImage.url
+    return {
+      url: response.data.imageUrl || response.data.url,
+      imageUrl: response.data.imageUrl || response.data.url,
+      ...response.data,
+    };
   },
 
   // Get product categories

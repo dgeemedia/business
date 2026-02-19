@@ -46,7 +46,7 @@ async function getAllProducts(req, res) {
   });
 
   console.log(`📦 Fetched ${productsWithRatings.length} products for business ${businessId}`);
-  res.json(productsWithRatings);
+  res.json({ products: productsWithRatings});
 }
 
 // ============================================================================

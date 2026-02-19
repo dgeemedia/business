@@ -4,7 +4,7 @@ import {
   ShoppingCart, Star, Phone, MapPin, Clock, X, Send,
   Plus, Minus, ChevronRight, Facebook, Instagram,
   Twitter, Youtube, LogIn, Search, Sparkles,
-  ArrowUp, Package, Moon, Sun, Globe, ChevronDown
+  ArrowUp, Package, Moon, Sun, Globe, ChevronDown, ChevronLeft
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
 import toast from 'react-hot-toast';
@@ -147,37 +147,100 @@ function Stars({ rating, dark }) {
   );
 }
 
+// ── Product Image Slideshow ────────────────────────────────────────────────────
+// Cycles through product.images[] (ProductImage records) + product.imageUrl fallback
+// every 3 seconds automatically; dots allow manual selection.
+function ProductImageSlideshow({ product, dark }) {
+  // Build the image list: prefer the images[] relation array, fall back to imageUrl
+  const imageList = (() => {
+    if (product.images && product.images.length > 0) {
+      return product.images.map(img => img.imageUrl);
+    }
+    if (product.imageUrl) return [product.imageUrl];
+    return [];
+  })();
+
+  const [idx, setIdx] = useState(0);
+  const [imgError, setImgError] = useState({});
+
+  // Auto-advance every 3s only when there are multiple images
+  useEffect(() => {
+    if (imageList.length <= 1) return;
+    const id = setInterval(() => setIdx(i => (i + 1) % imageList.length), 3000);
+    return () => clearInterval(id);
+  }, [imageList.length]);
+
+  if (imageList.length === 0 || imgError[idx]) {
+    return (
+      <div className="absolute inset-0 flex items-center justify-center"
+        style={{ background: dark ? 'rgba(255,255,255,.04)' : 'linear-gradient(135deg,#f3f0ea,#e8e4dc)' }}>
+        <Package className="w-10 h-10" style={{ color: dark ? 'rgba(255,255,255,.15)' : '#ccc' }}/>
+      </div>
+    );
+  }
+
+  return (
+    <>
+      <AnimatePresence mode="wait">
+        <motion.img
+          key={imageList[idx]}
+          src={imageList[idx]}
+          alt={product.name}
+          initial={{ opacity: 0 }}
+          animate={{ opacity: 1 }}
+          exit={{ opacity: 0 }}
+          transition={{ duration: 0.5 }}
+          onError={() => setImgError(prev => ({ ...prev, [idx]: true }))}
+          className="absolute inset-0 w-full h-full object-cover transition-transform duration-500 group-hover:scale-105"
+        />
+      </AnimatePresence>
+
+      {/* Dot indicators — only shown when 2+ images */}
+      {imageList.length > 1 && (
+        <div className="absolute bottom-2 left-1/2 -translate-x-1/2 flex gap-1 z-10"
+          onClick={e => e.stopPropagation()}>
+          {imageList.map((_, i) => (
+            <button
+              key={i}
+              onClick={() => setIdx(i)}
+              className="rounded-full transition-all duration-300"
+              style={{
+                width: i === idx ? 14 : 5,
+                height: 5,
+                background: i === idx ? 'white' : 'rgba(255,255,255,.45)',
+              }}
+            />
+          ))}
+        </div>
+      )}
+    </>
+  );
+}
+
 // ── Product Card ──────────────────────────────────────────────────────────────
 function ProductCard({ product, currency, primary, dark, onAdd, cartQty, t }) {
-  const [imgError, setImgError] = useState(false);
   const isOOS = product.stock === 0, isUnavail = !product.isAvailable;
   return (
     <motion.div layout initial={{ opacity:0, y:16 }} animate={{ opacity:1, y:0 }}
       className="sf-card group cursor-pointer" onClick={() => !isOOS && !isUnavail && onAdd(product)}>
       <div className="relative overflow-hidden" style={{ paddingTop:'70%' }}>
-        {product.imageUrl && !imgError
-          ? <img src={product.imageUrl} alt={product.name} onError={() => setImgError(true)}
-              className="absolute inset-0 w-full h-full object-cover transition-transform duration-500 group-hover:scale-105"/>
-          : <div className="absolute inset-0 flex items-center justify-center"
-              style={{ background: dark?'rgba(255,255,255,.04)':'linear-gradient(135deg,#f3f0ea,#e8e4dc)' }}>
-              <Package className="w-10 h-10" style={{ color: dark?'rgba(255,255,255,.15)':'#ccc' }}/>
-            </div>
-        }
-        <div className="absolute top-3 left-3 flex flex-col gap-1.5">
+        <ProductImageSlideshow product={product} dark={dark} />
+
+        <div className="absolute top-3 left-3 flex flex-col gap-1.5 z-10">
           {product.featured && <span className="sf-badge" style={{ background:primary, color:'white', fontSize:'11px' }}><Sparkles className="w-3 h-3"/> {t.featured}</span>}
           {isOOS && <span className="sf-badge bg-red-100 text-red-600">{t.outOfStock}</span>}
           {isUnavail && !isOOS && <span className="sf-badge" style={{ background:dark?'rgba(255,255,255,.1)':'#f3f4f6', color:dark?'#aaa':'#6b7280' }}>{t.unavailable}</span>}
         </div>
         {product.averageRating > 0 && (
-          <div className="absolute top-3 right-3 flex items-center gap-1 bg-black/60 backdrop-blur-sm px-2 py-1 rounded-full text-xs font-semibold text-white">
+          <div className="absolute top-3 right-3 flex items-center gap-1 bg-black/60 backdrop-blur-sm px-2 py-1 rounded-full text-xs font-semibold text-white z-10">
             <Star className="w-3 h-3 fill-amber-400 text-amber-400"/>{product.averageRating.toFixed(1)}
           </div>
         )}
         {cartQty > 0 && (
-          <div className="absolute bottom-3 right-3 w-7 h-7 rounded-full flex items-center justify-center text-xs font-bold text-white sf-bounce" style={{ background:primary }}>{cartQty}</div>
+          <div className="absolute bottom-6 right-3 w-7 h-7 rounded-full flex items-center justify-center text-xs font-bold text-white sf-bounce z-10" style={{ background:primary }}>{cartQty}</div>
         )}
         {!isOOS && !isUnavail && (
-          <div className="absolute inset-0 bg-black/0 group-hover:bg-black/15 transition-all duration-300 flex items-center justify-center">
+          <div className="absolute inset-0 bg-black/0 group-hover:bg-black/15 transition-all duration-300 flex items-center justify-center z-10">
             <div className="opacity-0 group-hover:opacity-100 transition-opacity duration-300 flex items-center gap-2 text-white font-semibold text-sm bg-black/70 px-4 py-2 rounded-full backdrop-blur-sm">
               <Plus className="w-4 h-4"/> {t.addToCart}
             </div>
@@ -272,6 +335,8 @@ function CartPanel({ cart, business, dark, primary, onClose, onUpdateQty, onRemo
 }
 
 // ── Checkout Modal ────────────────────────────────────────────────────────────
+// ✅ FIX: Now POSTs to /api/orders/checkout FIRST to register the order in DB,
+//         THEN opens WhatsApp. Order is saved + notification is created before WA opens.
 function CheckoutModal({ cart, business, dark, primary, secondary, onClose, onSuccess, t }) {
   const [form, setForm] = useState({ name:'', phone:'', email:'', address:'', message:'' });
   const [submitting, setSubmitting] = useState(false);
@@ -281,7 +346,8 @@ function CheckoutModal({ cart, business, dark, primary, secondary, onClose, onSu
   const delivery = business?.deliveryFee || 0;
   const total = subtotal+tax+delivery;
   const fld = k => e => setForm(f=>({...f,[k]:e.target.value}));
-  const buildMsg = () => {
+
+  const buildWhatsAppMsg = () => {
     let m=`🛍️ *New Order — ${form.name}*\n\n📱 Phone: ${form.phone}\n`;
     if(form.email) m+=`📧 Email: ${form.email}\n`;
     m+=`📍 Delivery: ${form.address}\n\n━━━━━━━━━━━━━\n*Order Items:*\n━━━━━━━━━━━━━\n`;
@@ -294,13 +360,42 @@ function CheckoutModal({ cart, business, dark, primary, secondary, onClose, onSu
     m+=`\nThank you for shopping at *${business?.name||'the store'}* 🙏`;
     return m;
   };
-  const handleSubmit = e => {
+
+  const handleSubmit = async e => {
     e.preventDefault();
     if(!business?.whatsappNumber){ toast.error('WhatsApp not configured'); return; }
     setSubmitting(true);
-    window.open(`https://wa.me/${business.whatsappNumber.replace(/[^\d+]/g,'')}?text=${encodeURIComponent(buildMsg())}`,'_blank');
-    setTimeout(()=>{ setSubmitting(false); onSuccess(); },500);
+
+    try {
+      // ✅ STEP 1: Save order to DB — this creates the notification too
+      await api.post('/api/orders/checkout', {
+        customerName: form.name,
+        phone: form.phone,
+        email: form.email || '',
+        address: form.address,
+        message: form.message || '',
+        items: cart.map(item => ({
+          productId: item.id,
+          quantity: item.quantity,
+        })),
+      });
+    } catch (err) {
+      // Order save failed (e.g. stock issue) — show error, don't open WA
+      const msg = err?.response?.data?.error || 'Failed to place order. Please try again.';
+      toast.error(msg);
+      setSubmitting(false);
+      return;
+    }
+
+    // ✅ STEP 2: Open WhatsApp with the order summary
+    window.open(
+      `https://wa.me/${business.whatsappNumber.replace(/[^\d+]/g,'')}?text=${encodeURIComponent(buildWhatsAppMsg())}`,
+      '_blank'
+    );
+
+    setTimeout(()=>{ setSubmitting(false); onSuccess(); }, 500);
   };
+
   const inp = { background:dark?'rgba(255,255,255,.06)':'#fefefe', color:dark?'#f0ede8':'#1a1a1a' };
   const lbl = { color:dark?'rgba(255,255,255,.65)':'#374151' };
   return (
@@ -348,7 +443,10 @@ function CheckoutModal({ cart, business, dark, primary, secondary, onClose, onSu
         </div>
         <div className="px-7 pb-7 pt-4 flex-shrink-0" style={{ borderTop:`1px solid ${dark?'rgba(255,255,255,.06)':'#f1f0ee'}` }}>
           <button form="sf-checkout" type="submit" className="sf-wa-btn" disabled={submitting}>
-            {submitting?<motion.div animate={{rotate:360}} transition={{repeat:Infinity,duration:.8,ease:'linear'}}><Send className="w-5 h-5"/></motion.div>:<><WaIcon size={20}/> {t.sendWhatsApp}</>}
+            {submitting
+              ? <motion.div animate={{rotate:360}} transition={{repeat:Infinity,duration:.8,ease:'linear'}}><Send className="w-5 h-5"/></motion.div>
+              : <><WaIcon size={20}/> {t.sendWhatsApp}</>
+            }
           </button>
           <p className="text-center text-xs mt-3" style={{ color:dark?'rgba(255,255,255,.25)':'#a8a099' }}>{t.redirectNotice}</p>
         </div>
@@ -425,19 +523,11 @@ function FloatingContacts({ business, dark, t }) {
 }
 
 // ── Hero ──────────────────────────────────────────────────────────────────────
-// ─── Hero background images ────────────────────────────────────────────────
-// All shots are human / lifestyle — no product-specific imagery.
-// Safe for hotels, restaurants, clinics, farms, salons, hardware — any category.
 const HERO_IMGS = [
-  // Warm family of three laughing together outdoors — universally welcoming
   'https://images.pexels.com/photos/1128318/pexels-photo-1128318.jpeg?auto=compress&cs=tinysrgb&w=1920',
-  // Happy woman holding shopping bags, big natural smile
   'https://images.pexels.com/photos/3769747/pexels-photo-3769747.jpeg?auto=compress&cs=tinysrgb&w=1920',
-  // Joyful couple walking and laughing — satisfied, relaxed, carefree
   'https://images.pexels.com/photos/1024311/pexels-photo-1024311.jpeg?auto=compress&cs=tinysrgb&w=1920',
-  // Smiling African family together — warm, relatable, inclusive
   'https://images.pexels.com/photos/8363104/pexels-photo-8363104.jpeg?auto=compress&cs=tinysrgb&w=1920',
-  // Happy woman customer with paper bag, natural daylight
   'https://images.pexels.com/photos/5632371/pexels-photo-5632371.jpeg?auto=compress&cs=tinysrgb&w=1920',
 ];
 function HeroSection({ business, primary, secondary, t, onShop }) {
@@ -553,11 +643,18 @@ const BusinessStorefront = () => {
       try{
         setLoading(true);
         const sub=getSubdomain(); if(!sub){ redirectToMain(); return; }
-        const [b,p]=await Promise.all([api.get(`/api/business/public/${sub}`),api.get(`/api/business/public/${sub}/products`)]);
+        const [b,p]=await Promise.all([
+          api.get(`/api/business/public/${sub}`),
+          api.get(`/api/business/public/${sub}/products`),
+        ]);
         if(!b.data.business){ redirectToMain(); return; }
-        setBusiness(b.data.business); setProducts(p.data.products||[]);
+        setBusiness(b.data.business);
+        setProducts(p.data.products||[]);
         if(b.data.business.language && T[b.data.business.language]) setLang(b.data.business.language);
-      }catch(e){ if(e.response?.status===404){ redirectToMain(); return; } toast.error('Failed to load store.'); }
+      }catch(e){
+        if(e.response?.status===404){ redirectToMain(); return; }
+        toast.error('Failed to load store.');
+      }
       finally{ setLoading(false); }
     })();
   },[]);
@@ -614,7 +711,6 @@ const BusinessStorefront = () => {
           borderBottom:`1px solid ${scrolled?(darkMode?'rgba(255,255,255,.08)':'rgba(0,0,0,.07)'):'transparent'}`,
           boxShadow:scrolled?'0 4px 24px rgba(0,0,0,.08)':'none' }}>
         <div className="max-w-6xl mx-auto px-4 md:px-6 flex items-center justify-between h-16">
-          {/* Logo */}
           <div className="flex items-center gap-3 min-w-0">
             {business.logo
               ? <img src={business.logo} alt={business.name} className="w-9 h-9 rounded-xl object-cover flex-shrink-0"/>
@@ -625,13 +721,11 @@ const BusinessStorefront = () => {
           </div>
 
           <div className="flex items-center gap-1.5">
-            {/* Search */}
             <button onClick={()=>setShowSearch(s=>!s)} className="p-2.5 rounded-xl transition-colors"
               style={{ color:hdrTextColor, opacity:.8, background:showSearch?(darkMode?'rgba(255,255,255,.08)':'rgba(0,0,0,.06)'):'transparent' }}>
               <Search className="w-5 h-5"/>
             </button>
 
-            {/* Language picker */}
             <div className="relative">
               <button onClick={()=>setLangOpen(o=>!o)}
                 className="flex items-center gap-1 px-2.5 py-2 rounded-xl transition-colors text-sm font-medium"
@@ -643,7 +737,7 @@ const BusinessStorefront = () => {
               <AnimatePresence>
                 {langOpen && (
                   <motion.div initial={{opacity:0,y:-8,scale:.95}} animate={{opacity:1,y:0,scale:1}} exit={{opacity:0,y:-8,scale:.95}}
-                    className="absolute right-0 mt-2 w-38 rounded-xl shadow-2xl overflow-hidden z-50"
+                    className="absolute right-0 mt-2 rounded-xl shadow-2xl overflow-hidden z-50"
                     style={{ width:152, background:darkMode?'#1c1c1e':'white', border:`1px solid ${darkMode?'rgba(255,255,255,.08)':'#e8e4dc'}` }}>
                     {Object.entries(LANGS).map(([code,l])=>(
                       <button key={code} onClick={()=>{setLang(code);setLangOpen(false);}}
@@ -657,7 +751,6 @@ const BusinessStorefront = () => {
               </AnimatePresence>
             </div>
 
-            {/* Dark mode toggle */}
             <button onClick={()=>setDarkMode(d=>!d)} className="p-2.5 rounded-xl transition-all"
               style={{ background:darkMode?'#F59E0B':'rgba(255,255,255,.15)', color:darkMode?'#1a1a1a':'#fff' }}>
               <motion.div animate={{rotate:darkMode?180:0}} transition={{duration:.3}}>
@@ -665,13 +758,11 @@ const BusinessStorefront = () => {
               </motion.div>
             </button>
 
-            {/* Owner login */}
             <a href="/login" className="hidden sm:flex items-center gap-1.5 text-sm px-3 py-2 rounded-xl font-medium"
               style={{ color:hdrTextColor, opacity:.5 }}>
               <LogIn className="w-4 h-4"/> {t.login}
             </a>
 
-            {/* Cart */}
             <button onClick={()=>totalQty>0&&setCartOpen(true)}
               className="relative flex items-center gap-2 px-4 py-2.5 rounded-xl font-semibold text-sm transition-all"
               style={{ background:totalQty>0?primary:(darkMode?'rgba(255,255,255,.08)':'rgba(0,0,0,.07)'), color:totalQty>0?'#fff':(darkMode?'rgba(255,255,255,.35)':'#9A9089') }}>
@@ -687,7 +778,6 @@ const BusinessStorefront = () => {
           </div>
         </div>
 
-        {/* Search drop */}
         <AnimatePresence>
           {showSearch && (
             <motion.div initial={{height:0,opacity:0}} animate={{height:'auto',opacity:1}} exit={{height:0,opacity:0}}
@@ -702,11 +792,9 @@ const BusinessStorefront = () => {
         </AnimatePresence>
       </header>
 
-      {/* HERO */}
       <HeroSection business={business} primary={primary} secondary={secondary} t={t}
         onShop={()=>productsRef.current?.scrollIntoView({behavior:'smooth',block:'start'})}/>
 
-      {/* CATEGORY PILLS */}
       {categories.length > 1 && (
         <div className="sticky z-30 transition-colors" style={{ top:64, background:darkMode?'#0f0f0f':'#F9F7F4' }}>
           <div className="max-w-6xl mx-auto px-4 md:px-6">
@@ -722,7 +810,6 @@ const BusinessStorefront = () => {
         </div>
       )}
 
-      {/* PRODUCTS */}
       <main ref={productsRef} className="max-w-6xl mx-auto px-4 md:px-6 py-8 pb-32">
         {displayed.length===0 ? (
           <div className="text-center py-24">
@@ -750,7 +837,6 @@ const BusinessStorefront = () => {
         )}
       </main>
 
-      {/* FOOTER */}
       <footer style={{ background:'#111111', borderTop:'1px solid rgba(255,255,255,.06)' }}>
         <div className="max-w-6xl mx-auto px-4 md:px-6 py-10">
           <div className="flex flex-col md:flex-row justify-between gap-8">
@@ -788,7 +874,6 @@ const BusinessStorefront = () => {
         </div>
       </footer>
 
-      {/* FLOATING CART (mobile) */}
       <AnimatePresence>
         {totalQty>0&&!cartOpen&&!checkoutOpen&&(
           <motion.button initial={{y:80,opacity:0}} animate={{y:0,opacity:1}} exit={{y:80,opacity:0}}
@@ -803,7 +888,6 @@ const BusinessStorefront = () => {
         )}
       </AnimatePresence>
 
-      {/* SCROLL TOP */}
       <AnimatePresence>
         {showTop&&(
           <motion.button initial={{opacity:0,scale:.8}} animate={{opacity:1,scale:1}} exit={{opacity:0,scale:.8}}
@@ -815,10 +899,8 @@ const BusinessStorefront = () => {
         )}
       </AnimatePresence>
 
-      {/* FLOATING WA + PHONE */}
       <FloatingContacts business={business} dark={darkMode} t={t}/>
 
-      {/* PANELS & MODALS */}
       <AnimatePresence>
         {cartOpen&&<CartPanel cart={cart} business={business} dark={darkMode} primary={primary}
           onClose={()=>setCartOpen(false)} onUpdateQty={updateQty} onRemove={removeItem}
