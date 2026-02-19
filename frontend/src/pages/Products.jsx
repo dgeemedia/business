@@ -3,7 +3,7 @@ import React, { useState, useEffect } from 'react';
 import { Plus, Edit, Trash2, Eye, EyeOff, Image as ImageIcon, Search, Filter } from 'lucide-react';
 import { motion } from 'framer-motion';
 import toast from 'react-hot-toast';
-import { Card, Button, Badge, Modal, LoadingSpinner, EmptyState } from '../components/shared';
+import { Card, Button, Badge, Modal, LoadingSpinner, EmptyState, Input } from '../components/shared';
 import productService from '../services/productService';
 import { formatCurrency } from '../utils/helpers';
 

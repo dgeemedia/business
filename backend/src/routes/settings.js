@@ -11,6 +11,6 @@ router.get('/', asyncHandler(getSettings));
 
 // ✅ RESTRICTED: Only Super-admin and Admin can update settings
 // Staff CANNOT access this route
-router.patch('/', authMiddleware, requireAdmin, asyncHandler(updateSettings));
+router.put('/', authMiddleware, requireAdmin, asyncHandler(updateSettings));
 
 module.exports = router;

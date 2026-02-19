@@ -41,7 +41,7 @@ const productService = {
   // Upload product image
   uploadImage: async (file) => {
     const formData = new FormData();
-    formData.append('file', file);
+    formData.append('image', file);
     
     const response = await api.post('/api/upload', formData, {
       headers: {

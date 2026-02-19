@@ -141,7 +141,7 @@ const Settings = () => {
     try {
       setUploadingLogo(true);
       const fd = new FormData();
-      fd.append('file', file);
+      fd.append('image', file);
       const res = await api.post('/api/upload', fd, {
         headers: { 'Content-Type': 'multipart/form-data' },
       });
