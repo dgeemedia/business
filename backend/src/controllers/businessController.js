@@ -95,17 +95,6 @@ async function getPublicBusiness(req, res) {
   });
 }
 
-// ============================================================================
-// PUBLIC STOREFRONT: GET PRODUCTS
-// GET /api/business/public/:slug/products  — no auth required
-//
-// ✅ FIX: removed `isAvailable: true` filter — field does NOT exist in the
-//    current schema.  After you run the migration below it will be added back.
-//    For now we filter only on stock > 0 so nothing visible is 0-stock.
-//
-// ✅ Computes averageRating from the ProductRating relation (it's not stored
-//    as a column).
-// ============================================================================
 async function getPublicBusinessProducts(req, res) {
   const { slug } = req.params;
 
@@ -450,8 +439,110 @@ async function toggleBusinessStatus(req, res) {
   res.json({ ok: true, message: `Business ${action.toLowerCase()} successfully`, business: updated });
 }
 
+// ─────────────────────────────────────────────────────────────────────────────
+// GET PUBLIC PRODUCTS (storefront)
+// GET /api/business/public/:slug/products
+//
+// ✅ KEY FIX: include images relation so ProductImageSlideshow has data to cycle
+// ─────────────────────────────────────────────────────────────────────────────
+async function getPublicProducts(req, res) {
+  const { slug } = req.params;
+  const { category, search } = req.query;
+
+  // Resolve business
+  const business = await prisma.business.findUnique({
+    where: { slug },
+    select: { id: true, isActive: true },
+  });
+
+  if (!business || !business.isActive) {
+    return res.status(404).json({ error: 'Business not found' });
+  }
+
+  const where = {
+    businessId: business.id,
+    isAvailable: true,           // only show available products on storefront
+    stock: { gt: 0 },            // only show in-stock items
+  };
+
+  if (category && category !== 'all') {
+    where.category = category;
+  }
+
+  if (search) {
+    where.OR = [
+      { name: { contains: search, mode: 'insensitive' } },
+      { description: { contains: search, mode: 'insensitive' } },
+    ];
+  }
+
+  const products = await prisma.product.findMany({
+    where,
+    orderBy: [
+      { featured: 'desc' },      // featured products first
+      { createdAt: 'desc' },
+    ],
+    include: {
+      // ✅ CRITICAL: include the images[] relation — without this, slideshow has no data
+      images: {
+        orderBy: { order: 'asc' },
+      },
+      ratings: {
+        select: { rating: true },
+      },
+    },
+  });
+
+  const productsWithRatings = products.map(product => {
+    const ratings = product.ratings || [];
+    const totalRatings = ratings.length;
+    const averageRating = totalRatings > 0
+      ? ratings.reduce((sum, r) => sum + r.rating, 0) / totalRatings
+      : 0;
+
+    const { ratings: _, ...productData } = product;
+
+    return {
+      ...productData,
+      averageRating: Math.round(averageRating * 10) / 10,
+      totalRatings,
+    };
+  });
+
+  console.log(`🛍️ Public products for ${slug}: ${productsWithRatings.length} items`);
+  res.json({ products: productsWithRatings });
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// GET ALL PUBLIC BUSINESSES (landing page directory)
+// GET /api/business/public/all
+// ─────────────────────────────────────────────────────────────────────────────
+async function getAllPublicBusinesses(req, res) {
+  const businesses = await prisma.business.findMany({
+    where: { isActive: true },
+    select: {
+      slug: true,
+      businessName: true,
+      businessType: true,
+      description: true,
+      logo: true,
+      primaryColor: true,
+    },
+    orderBy: { createdAt: 'desc' },
+  });
+
+  const formatted = businesses.map(({ businessName, ...rest }) => ({
+    ...rest,
+    name: businessName,
+  }));
+
+  res.json({ businesses: formatted });
+}
+
 module.exports = {
   getPublicBusiness,
+  getPublicProducts,
+  getAllPublicBusinesses,
   getPublicBusinessProducts,
   getBusinessBySlug,
   getAllBusinesses,

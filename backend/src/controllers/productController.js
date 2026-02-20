@@ -1,27 +1,21 @@
 // backend/src/controllers/productController.js
 const prisma = require('../lib/prisma');
 
-/**
- * Resolve businessId with the same priority used everywhere else:
- *   1. req.businessId        – subdomain middleware (most reliable)
- *   2. req.user?.businessId  – logged-in user's own business
- */
 function resolveBusinessId(req) {
   return req.businessId || req.user?.businessId || null;
 }
 
 // ============================================================================
-// GET ALL PRODUCTS - WITH TENANT ISOLATION
+// GET ALL PRODUCTS
 // ============================================================================
 async function getAllProducts(req, res) {
   const businessId = resolveBusinessId(req);
-
   if (!businessId) {
     return res.status(400).json({ error: 'Business context required' });
   }
 
   const products = await prisma.product.findMany({
-    where: { businessId },                          // 🔥 TENANT FILTER
+    where: { businessId },
     orderBy: { createdAt: 'desc' },
     include: {
       ratings: { select: { rating: true } },
@@ -33,11 +27,8 @@ async function getAllProducts(req, res) {
     const ratings      = product.ratings || [];
     const totalRatings = ratings.length;
     const averageRating = totalRatings > 0
-      ? ratings.reduce((sum, r) => sum + r.rating, 0) / totalRatings
-      : 0;
-
+      ? ratings.reduce((sum, r) => sum + r.rating, 0) / totalRatings : 0;
     const { ratings: _, ...productData } = product;
-
     return {
       ...productData,
       averageRating: Math.round(averageRating * 10) / 10,
@@ -45,21 +36,16 @@ async function getAllProducts(req, res) {
     };
   });
 
-  console.log(`📦 Fetched ${productsWithRatings.length} products for business ${businessId}`);
-  res.json({ products: productsWithRatings});
+  res.json({ products: productsWithRatings });
 }
 
 // ============================================================================
-// GET PRODUCT BY ID - WITH TENANT SECURITY
+// GET PRODUCT BY ID
 // ============================================================================
 async function getProductById(req, res) {
   const businessId = resolveBusinessId(req);
-
   const product = await prisma.product.findFirst({
-    where: {
-      id: Number(req.params.id),
-      businessId,                                   // 🔥 TENANT FILTER
-    },
+    where: { id: Number(req.params.id), businessId },
     include: {
       ratings: {
         select:  { rating: true, comment: true, createdAt: true, phone: true },
@@ -70,24 +56,18 @@ async function getProductById(req, res) {
     },
   });
 
-  if (!product) {
-    throw new Error('Product not found');
-  }
+  if (!product) throw new Error('Product not found');
 
   const ratings      = product.ratings || [];
   const totalRatings = ratings.length;
   const averageRating = totalRatings > 0
-    ? ratings.reduce((sum, r) => sum + r.rating, 0) / totalRatings
-    : 0;
+    ? ratings.reduce((sum, r) => sum + r.rating, 0) / totalRatings : 0;
 
   const maskedRatings = ratings.map(r => ({
     ...r,
     phone: r.phone.slice(-4).padStart(r.phone.length, '*'),
   }));
-
   const { ratings: _, ...productData } = product;
-
-  console.log(`📦 Fetched product ${product.id} from business ${businessId}`);
 
   res.json({
     ...productData,
@@ -98,7 +78,7 @@ async function getProductById(req, res) {
 }
 
 // ============================================================================
-// CREATE PRODUCT - WITH BUSINESS ASSIGNMENT
+// CREATE PRODUCT
 // ============================================================================
 async function createProduct(req, res) {
   const { name, price, stock, description, imageUrl, images } = req.body;
@@ -107,14 +87,11 @@ async function createProduct(req, res) {
     throw new Error('Name, price, and stock are required');
   }
 
-  // Priority: explicit body > subdomain > user > error
   let businessId = req.body.businessId
     ? Number(req.body.businessId)
     : resolveBusinessId(req);
 
-  if (!businessId) {
-    throw new Error('Business ID is required');
-  }
+  if (!businessId) throw new Error('Business ID is required');
 
   const product = await prisma.product.create({
     data: {
@@ -123,7 +100,7 @@ async function createProduct(req, res) {
       stock:       Number(stock),
       description: description?.trim() || '',
       imageUrl:    imageUrl?.trim() || '',
-      businessId,                                   // 🔥 BUSINESS ASSIGNMENT
+      businessId,
       images: images && images.length > 0 ? {
         create: images.map((img, index) => ({
           imageUrl:  img.imageUrl,
@@ -135,118 +112,134 @@ async function createProduct(req, res) {
     include: { images: true },
   });
 
-  console.log(`✅ Created product: ${product.name} for business ${businessId}`);
   res.status(201).json(product);
 }
 
 // ============================================================================
-// UPDATE PRODUCT - WITH TENANT SECURITY
+// UPDATE PRODUCT
 // ============================================================================
 async function updateProduct(req, res) {
   const { images, ...updateData } = req.body;
   const productId = Number(req.params.id);
 
-  console.log(`🔄 Updating product ${productId}`);
-
-  try {
-    const existingProduct = await prisma.product.findUnique({
-      where: { id: productId },
-    });
-
-    if (!existingProduct) {
-      return res.status(404).json({ error: 'Product not found' });
-    }
-
-    // 🔥 TENANT SECURITY: compare against resolved businessId
-    const resolvedBiz = resolveBusinessId(req);
-    if (req.user.role !== 'super-admin' && existingProduct.businessId !== resolvedBiz) {
-      return res.status(403).json({ error: 'You cannot manage products from another business' });
-    }
-
-    await prisma.product.update({
-      where: { id: productId },
-      data: {
-        name:        updateData.name,
-        price:       Number(updateData.price),
-        stock:       Number(updateData.stock),
-        description: updateData.description || '',
-        imageUrl:    updateData.imageUrl || '',
-      },
-    });
-
-    console.log(`✅ Updated product basic data for ${productId}`);
-
-    // Handle images if provided
-    if (images !== undefined && Array.isArray(images)) {
-      await prisma.productImage.deleteMany({ where: { productId } });
-
-      if (images.length > 0) {
-        const imagesToCreate = images.map((img, index) => ({
-          productId,
-          imageUrl:  img.imageUrl,
-          order:     img.order !== undefined ? img.order : index,
-          isPrimary: img.isPrimary !== undefined ? img.isPrimary : (index === 0),
-        }));
-
-        await prisma.productImage.createMany({ data: imagesToCreate });
-        console.log(`✅ Created ${imagesToCreate.length} new images for product ${productId}`);
-      }
-    }
-
-    const updatedProduct = await prisma.product.findUnique({
-      where: { id: productId },
-      include: { images: { orderBy: { order: 'asc' } } },
-    });
-
-    console.log(`✅ Successfully updated product ${productId}`);
-    res.json(updatedProduct);
-  } catch (error) {
-    console.error(`❌ Failed to update product ${productId}:`, error);
-    throw error;
-  }
-}
-
-// ============================================================================
-// DELETE PRODUCT - WITH TENANT SECURITY
-// ============================================================================
-async function deleteProduct(req, res) {
-  const productId = Number(req.params.id);
-
-  const existingProduct = await prisma.product.findUnique({
-    where: { id: productId },
-  });
-
-  if (!existingProduct) {
-    return res.status(404).json({ error: 'Product not found' });
-  }
+  const existingProduct = await prisma.product.findUnique({ where: { id: productId } });
+  if (!existingProduct) return res.status(404).json({ error: 'Product not found' });
 
   const resolvedBiz = resolveBusinessId(req);
   if (req.user.role !== 'super-admin' && existingProduct.businessId !== resolvedBiz) {
     return res.status(403).json({ error: 'You cannot manage products from another business' });
   }
 
-  await prisma.product.delete({ where: { id: productId } });
+  await prisma.product.update({
+    where: { id: productId },
+    data: {
+      name:        updateData.name,
+      price:       Number(updateData.price),
+      stock:       Number(updateData.stock),
+      description: updateData.description || '',
+      imageUrl:    updateData.imageUrl || '',
+    },
+  });
 
-  console.log(`🗑️ Deleted product: ${productId} from business ${existingProduct.businessId}`);
+  if (images !== undefined && Array.isArray(images)) {
+    await prisma.productImage.deleteMany({ where: { productId } });
+    if (images.length > 0) {
+      await prisma.productImage.createMany({
+        data: images.map((img, index) => ({
+          productId,
+          imageUrl:  img.imageUrl,
+          order:     img.order !== undefined ? img.order : index,
+          isPrimary: img.isPrimary !== undefined ? img.isPrimary : index === 0,
+        })),
+      });
+    }
+  }
+
+  const updatedProduct = await prisma.product.findUnique({
+    where: { id: productId },
+    include: { images: { orderBy: { order: 'asc' } } },
+  });
+
+  res.json(updatedProduct);
+}
+
+// ============================================================================
+// DELETE PRODUCT
+// ✅ FIX: OrderItem has no CASCADE on Product — must null-out or delete items first
+// ============================================================================
+async function deleteProduct(req, res) {
+  const productId = Number(req.params.id);
+
+  const existingProduct = await prisma.product.findUnique({ where: { id: productId } });
+  if (!existingProduct) return res.status(404).json({ error: 'Product not found' });
+
+  const resolvedBiz = resolveBusinessId(req);
+  if (req.user.role !== 'super-admin' && existingProduct.businessId !== resolvedBiz) {
+    return res.status(403).json({ error: 'You cannot manage products from another business' });
+  }
+
+  // Delete in correct dependency order to avoid FK violations:
+  // 1. ProductImage records
+  // 2. ProductRating records
+  // 3. OrderItem records (preserve the order history but unlink the product)
+  //    — we set productId to null if your schema allows, otherwise delete them
+  await prisma.$transaction(async (tx) => {
+    // Remove images
+    await tx.productImage.deleteMany({ where: { productId } });
+
+    // Remove ratings
+    await tx.productRating.deleteMany({ where: { productId } });
+
+    // For order items: delete them (order history will show "deleted product")
+    // If you want to keep order history intact, add `productId Int?` (nullable)
+    // to OrderItem in your schema instead — but for now, delete is safest.
+    await tx.orderItem.deleteMany({ where: { productId } });
+
+    // Now safe to delete the product
+    await tx.product.delete({ where: { id: productId } });
+  });
+
+  console.log(`🗑️ Deleted product ${productId} and its related records`);
   res.json({ ok: true, message: 'Product deleted' });
+}
+
+// ============================================================================
+// TOGGLE AVAILABILITY
+// ✅ NEW: was missing entirely — Products.jsx calls PATCH /api/products/:id/toggle
+// ============================================================================
+async function toggleAvailability(req, res) {
+  const productId = Number(req.params.id);
+
+  const existingProduct = await prisma.product.findUnique({ where: { id: productId } });
+  if (!existingProduct) return res.status(404).json({ error: 'Product not found' });
+
+  const resolvedBiz = resolveBusinessId(req);
+  if (req.user.role !== 'super-admin' && existingProduct.businessId !== resolvedBiz) {
+    return res.status(403).json({ error: 'You cannot manage products from another business' });
+  }
+
+  const updated = await prisma.product.update({
+    where: { id: productId },
+    data: { isAvailable: !existingProduct.isAvailable },
+  });
+
+  console.log(`👁️ Product ${productId} availability set to ${updated.isAvailable}`);
+  res.json({ ok: true, isAvailable: updated.isAvailable, product: updated });
 }
 
 // ============================================================================
 // IMAGE MANAGEMENT
 // ============================================================================
-
 async function addProductImage(req, res) {
   const { productId } = req.params;
   const { imageUrl, isPrimary } = req.body;
 
   const product = await prisma.product.findUnique({ where: { id: Number(productId) } });
-  if (!product) {
-    return res.status(404).json({ error: 'Product not found' });
-  }
+  if (!product) return res.status(404).json({ error: 'Product not found' });
 
   const resolvedBiz = resolveBusinessId(req);
   if (req.user.role !== 'super-admin' && product.businessId !== resolvedBiz) {
-    return res.status(403).json({ error: 'You cannot manage products from another business' });
+    return res.status(403).json({ error: 'Access denied' });
   }
 
   const maxOrder = await prisma.productImage.findFirst({
@@ -259,12 +252,11 @@ async function addProductImage(req, res) {
     data: {
       productId: Number(productId),
       imageUrl,
-      order:     (maxOrder?.order || 0) + 1,
+      order:     (maxOrder?.order ?? 0) + 1,
       isPrimary: isPrimary || false,
     },
   });
 
-  console.log(`✅ Added image to product ${productId}`);
   res.json(image);
 }
 
@@ -275,19 +267,14 @@ async function deleteProductImage(req, res) {
     where:   { id: Number(imageId) },
     include: { product: true },
   });
-
-  if (!image) {
-    return res.status(404).json({ error: 'Image not found' });
-  }
+  if (!image) return res.status(404).json({ error: 'Image not found' });
 
   const resolvedBiz = resolveBusinessId(req);
   if (req.user.role !== 'super-admin' && image.product.businessId !== resolvedBiz) {
-    return res.status(403).json({ error: 'You cannot manage products from another business' });
+    return res.status(403).json({ error: 'Access denied' });
   }
 
   await prisma.productImage.delete({ where: { id: Number(imageId) } });
-
-  console.log(`🗑️ Deleted image: ${imageId}`);
   res.json({ ok: true, message: 'Image deleted' });
 }
 
@@ -296,13 +283,11 @@ async function reorderProductImages(req, res) {
   const { imageOrders } = req.body;
 
   const product = await prisma.product.findUnique({ where: { id: Number(productId) } });
-  if (!product) {
-    return res.status(404).json({ error: 'Product not found' });
-  }
+  if (!product) return res.status(404).json({ error: 'Product not found' });
 
   const resolvedBiz = resolveBusinessId(req);
   if (req.user.role !== 'super-admin' && product.businessId !== resolvedBiz) {
-    return res.status(403).json({ error: 'You cannot manage products from another business' });
+    return res.status(403).json({ error: 'Access denied' });
   }
 
   for (const { id, order } of imageOrders) {
@@ -314,7 +299,6 @@ async function reorderProductImages(req, res) {
     orderBy: { order: 'asc' },
   });
 
-  console.log(`✅ Reordered images for product ${productId}`);
   res.json(images);
 }
 
@@ -324,6 +308,7 @@ module.exports = {
   createProduct,
   updateProduct,
   deleteProduct,
+  toggleAvailability,
   addProductImage,
   deleteProductImage,
   reorderProductImages,

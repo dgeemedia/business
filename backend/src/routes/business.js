@@ -12,6 +12,9 @@ const {
   toggleBusinessStatus,
   // ✅ NEW: public storefront handlers
   getPublicBusiness,
+  getPublicProducts,
+  getAllPublicBusinesses,
+
   getPublicBusinessProducts,
 } = require('../controllers/businessController');
 
@@ -35,6 +38,8 @@ const { asyncHandler } = require('../middleware/errorHandler');
 // GET /api/business/public/:slug
 // Storefront: load business info by slug
 router.get('/public/:slug', asyncHandler(getPublicBusiness));
+router.get('/public/:slug', asyncHandler(getPublicProducts));
+router.get('/public/:slug', asyncHandler(getAllPublicBusinesses));
 
 // GET /api/business/public/:slug/products
 // Storefront: load available products for a business

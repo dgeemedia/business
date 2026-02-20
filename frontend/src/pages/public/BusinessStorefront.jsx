@@ -147,65 +147,73 @@ function Stars({ rating, dark }) {
   );
 }
 
-// ── Product Image Slideshow ────────────────────────────────────────────────────
-// Cycles through product.images[] (ProductImage records) + product.imageUrl fallback
-// every 3 seconds automatically; dots allow manual selection.
 function ProductImageSlideshow({ product, dark }) {
-  // Build the image list: prefer the images[] relation array, fall back to imageUrl
-  const imageList = (() => {
+  // Build flat URL list: prefer images[] relation, fall back to imageUrl string
+  const imageList = React.useMemo(() => {
     if (product.images && product.images.length > 0) {
-      return product.images.map(img => img.imageUrl);
+      return product.images
+        .slice()
+        .sort((a, b) => (a.order ?? 0) - (b.order ?? 0))
+        .map(img => img.imageUrl)
+        .filter(Boolean);
     }
     if (product.imageUrl) return [product.imageUrl];
     return [];
-  })();
+  }, [product.images, product.imageUrl]);
 
-  const [idx, setIdx] = useState(0);
-  const [imgError, setImgError] = useState({});
+  const [idx, setIdx] = React.useState(0);
+  const [imgErrors, setImgErrors] = React.useState({});
 
-  // Auto-advance every 3s only when there are multiple images
-  useEffect(() => {
+  // Reset index when product changes
+  React.useEffect(() => { setIdx(0); setImgErrors({}); }, [product.id]);
+
+  // Auto-advance every 3 s — only when multiple images exist
+  React.useEffect(() => {
     if (imageList.length <= 1) return;
     const id = setInterval(() => setIdx(i => (i + 1) % imageList.length), 3000);
-    return () => clearInterval(id);
+    return () => clearInterval(id);        // ✅ clean up on unmount / imageList change
   }, [imageList.length]);
 
-  if (imageList.length === 0 || imgError[idx]) {
+  // Fallback placeholder
+  if (imageList.length === 0 || imgErrors[idx]) {
     return (
       <div className="absolute inset-0 flex items-center justify-center"
         style={{ background: dark ? 'rgba(255,255,255,.04)' : 'linear-gradient(135deg,#f3f0ea,#e8e4dc)' }}>
-        <Package className="w-10 h-10" style={{ color: dark ? 'rgba(255,255,255,.15)' : '#ccc' }}/>
+        <Package className="w-10 h-10" style={{ color: dark ? 'rgba(255,255,255,.15)' : '#ccc' }} />
       </div>
     );
   }
 
   return (
     <>
+      {/* Slide images — use key= so React always mounts a fresh img when index changes */}
       <AnimatePresence mode="wait">
         <motion.img
-          key={imageList[idx]}
+          key={`${product.id}-${idx}`}
           src={imageList[idx]}
           alt={product.name}
           initial={{ opacity: 0 }}
           animate={{ opacity: 1 }}
           exit={{ opacity: 0 }}
           transition={{ duration: 0.5 }}
-          onError={() => setImgError(prev => ({ ...prev, [idx]: true }))}
+          onError={() => setImgErrors(prev => ({ ...prev, [idx]: true }))}
           className="absolute inset-0 w-full h-full object-cover transition-transform duration-500 group-hover:scale-105"
         />
       </AnimatePresence>
 
-      {/* Dot indicators — only shown when 2+ images */}
+      {/* Dot indicators — only shown for 2+ images */}
       {imageList.length > 1 && (
-        <div className="absolute bottom-2 left-1/2 -translate-x-1/2 flex gap-1 z-10"
-          onClick={e => e.stopPropagation()}>
+        <div
+          className="absolute bottom-2 left-1/2 -translate-x-1/2 flex gap-1 z-10"
+          onClick={e => e.stopPropagation()}   // don't trigger addToCart on dot click
+        >
           {imageList.map((_, i) => (
             <button
               key={i}
               onClick={() => setIdx(i)}
               className="rounded-full transition-all duration-300"
               style={{
-                width: i === idx ? 14 : 5,
+                width:  i === idx ? 14 : 5,
                 height: 5,
                 background: i === idx ? 'white' : 'rgba(255,255,255,.45)',
               }}
