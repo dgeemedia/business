@@ -7,14 +7,15 @@ import {
   Calendar, Zap, Star, ArrowRight,
 } from 'lucide-react';
 import { motion } from 'framer-motion';
-import { Card, Badge, LoadingSpinner, Button, Modal } from '../components/shared';
+import { Card, Badge, LoadingSpinner, Button } from '../components/shared';
+import { PaymentModal } from '../components/shared/PaymentModal';  // ✅ real payment modal
 import orderService from '../services/orderService';
 import api from '../services/api';
 import useBusinessStore from '../stores/businessStore';
 import { formatCurrency, formatRelativeTime } from '../utils/helpers';
 
 // ─────────────────────────────────────────────────────────────────────────────
-// SUBSCRIPTION HELPERS (inline — no separate page import needed)
+// SUBSCRIPTION HELPERS
 // ─────────────────────────────────────────────────────────────────────────────
 function getTimeRemaining(expiryDate) {
   if (!expiryDate) return null;
@@ -38,6 +39,7 @@ function formatExpiry(date) {
 
 function CountdownTimer({ expiryDate, isTrial }) {
   const [timeLeft, setTimeLeft] = useState(() => getTimeRemaining(expiryDate));
+
   useEffect(() => {
     if (!expiryDate) return;
     const id = setInterval(() => setTimeLeft(getTimeRemaining(expiryDate)), 1000);
@@ -96,50 +98,6 @@ function CountdownTimer({ expiryDate, isTrial }) {
   );
 }
 
-const PLANS = [
-  {
-    id: 'monthly', name: 'Monthly', price: '₦15,000', period: 'per month',
-    description: 'Billed every 30 days — cancel anytime',
-    features: ['Full platform access', 'Unlimited products', 'All analytics', 'Customer support'],
-  },
-  {
-    id: 'annual', name: 'Annual', price: '₦150,000', period: 'per year',
-    description: 'Save 17% vs monthly', badge: 'Best Value',
-    features: ['Everything in Monthly', '2 months free', 'Priority support', 'New features first'],
-  },
-];
-
-function PlanOption({ plan, selected, onSelect }) {
-  return (
-    <button type="button" onClick={() => onSelect(plan.id)}
-      className={`w-full text-left p-4 rounded-xl border-2 transition-all ${
-        selected ? 'border-primary-500 bg-primary-50 shadow-md' : 'border-gray-200 hover:border-primary-200 hover:bg-gray-50'
-      }`}>
-      <div className="flex items-start justify-between gap-3">
-        <div className="flex-1">
-          <div className="flex items-center gap-2 mb-1">
-            <span className="font-bold text-gray-900">{plan.name}</span>
-            {plan.badge && <span className="text-xs bg-green-100 text-green-700 px-2 py-0.5 rounded-full font-semibold">{plan.badge}</span>}
-          </div>
-          <p className="text-sm text-gray-500 mb-2">{plan.description}</p>
-          <ul className="space-y-1">
-            {plan.features.map(f => (
-              <li key={f} className="text-xs text-gray-600 flex items-center gap-1.5">
-                <CheckCircle className="w-3.5 h-3.5 text-green-500 flex-shrink-0" />{f}
-              </li>
-            ))}
-          </ul>
-        </div>
-        <div className="text-right flex-shrink-0">
-          <p className="text-xl font-black text-gray-900">{plan.price}</p>
-          <p className="text-xs text-gray-400">{plan.period}</p>
-          {selected && <CheckCircle className="w-5 h-5 text-primary-500 ml-auto mt-1" />}
-        </div>
-      </div>
-    </button>
-  );
-}
-
 // ─────────────────────────────────────────────────────────────────────────────
 // MAIN DASHBOARD
 // ─────────────────────────────────────────────────────────────────────────────
@@ -151,12 +109,9 @@ const Dashboard = () => {
   const [loading,      setLoading]      = useState(true);
 
   // Subscription state
-  const [subscription,    setSubscription]    = useState(null);
-  const [subLoading,      setSubLoading]      = useState(true);
-  const [renewModalOpen,  setRenewModalOpen]  = useState(false);
-  const [selectedPlan,    setSelectedPlan]    = useState('monthly');
-  const [paymentStep,     setPaymentStep]     = useState('select');
-  const [processing,      setProcessing]      = useState(false);
+  const [subscription,       setSubscription]       = useState(null);
+  const [subLoading,         setSubLoading]         = useState(true);
+  const [paymentModalOpen,   setPaymentModalOpen]   = useState(false); // ✅ renamed to match PaymentModal pattern
 
   // ── Fetch stats ─────────────────────────────────────────────────────────
   useEffect(() => {
@@ -201,52 +156,27 @@ const Dashboard = () => {
 
   useEffect(() => { fetchSubscription(); }, [fetchSubscription]);
 
-  // ── Renewal flow ────────────────────────────────────────────────────────
-  const handlePayment = async () => {
-    setProcessing(true);
-    setPaymentStep('payment');
-    try {
-      await new Promise(r => setTimeout(r, 1500));
-      await api.post('/api/contact-support', {
-        type: 'subscription_renewal', plan: selectedPlan,
-        businessId: currentBusiness.id,
-        message: `Renewal request — ${selectedPlan} — Ref: SIMULATED_${Date.now()}`,
-      }).catch(() => {});
-      setPaymentStep('success');
-    } catch {
-      setPaymentStep('select');
-    } finally {
-      setProcessing(false);
-    }
-  };
-
-  const handleModalClose = () => {
-    setRenewModalOpen(false);
-    setPaymentStep('select');
-    if (paymentStep === 'success') fetchSubscription();
-  };
-
   if (loading) return <LoadingSpinner fullScreen />;
 
   // ── Subscription data ───────────────────────────────────────────────────
-  const biz       = subscription?.business || currentBusiness || {};
-  const subStatus = subscription?.status   || {};
-  const isTrial   = biz.subscriptionPlan === 'free_trial';
+  const biz        = subscription?.business || currentBusiness || {};
+  const subStatus  = subscription?.status   || {};
+  const isTrial    = biz.subscriptionPlan === 'free_trial';
   const expiryDate = isTrial ? biz.trialEndsAt : biz.subscriptionExpiry;
 
   const subStatusConfig = {
-    trial_active:  { label: 'Free Trial',   variant: 'info',    icon: Zap },
-    active:        { label: 'Active',        variant: 'success', icon: CheckCircle },
-    expiring_soon: { label: 'Expiring Soon', variant: 'warning', icon: AlertCircle },
-    trial_expired: { label: 'Trial Expired', variant: 'danger',  icon: XCircle },
-    expired:       { label: 'Expired',       variant: 'danger',  icon: XCircle },
-    none:          { label: 'No Plan',       variant: 'gray',    icon: CreditCard },
+    trial_active:  { label: 'Free Trial',    variant: 'info',    icon: Zap         },
+    active:        { label: 'Active',         variant: 'success', icon: CheckCircle },
+    expiring_soon: { label: 'Expiring Soon',  variant: 'warning', icon: AlertCircle },
+    trial_expired: { label: 'Trial Expired',  variant: 'danger',  icon: XCircle     },
+    expired:       { label: 'Expired',         variant: 'danger',  icon: XCircle     },
+    none:          { label: 'No Plan',         variant: 'gray',    icon: CreditCard  },
   };
-  const subInfo   = subStatusConfig[subStatus.status] || subStatusConfig.none;
-  const SubIcon   = subInfo.icon;
+  const subInfo  = subStatusConfig[subStatus.status] || subStatusConfig.none;
+  const SubIcon  = subInfo.icon;
   const showRenewBanner = ['trial_expired', 'expired', 'expiring_soon'].includes(subStatus.status);
 
-  // ── Stat cards ─────────────────────────────────────────────────────────
+  // ── Stat cards ──────────────────────────────────────────────────────────
   const statCards = [
     {
       title:   'Total Revenue',
@@ -284,13 +214,13 @@ const Dashboard = () => {
 
   const getStatusBadge = (status) => {
     const cfg = {
-      PENDING:          { variant: 'warning', icon: Clock },
-      CONFIRMED:        { variant: 'info',    icon: CheckCircle },
-      PREPARING:        { variant: 'info',    icon: Package },
-      READY:            { variant: 'success', icon: CheckCircle },
-      OUT_FOR_DELIVERY: { variant: 'info',    icon: Package },
-      DELIVERED:        { variant: 'success', icon: CheckCircle },
-      CANCELLED:        { variant: 'danger',  icon: XCircle },
+      PENDING:          { variant: 'warning', icon: Clock         },
+      CONFIRMED:        { variant: 'info',    icon: CheckCircle   },
+      PREPARING:        { variant: 'info',    icon: Package       },
+      READY:            { variant: 'success', icon: CheckCircle   },
+      OUT_FOR_DELIVERY: { variant: 'info',    icon: Package       },
+      DELIVERED:        { variant: 'success', icon: CheckCircle   },
+      CANCELLED:        { variant: 'danger',  icon: XCircle       },
     };
     const c = cfg[status] || { variant: 'gray' };
     return <Badge variant={c.variant} icon={c.icon}>{status}</Badge>;
@@ -304,11 +234,12 @@ const Dashboard = () => {
       <div>
         <h1 className="text-3xl font-bold text-gray-900 mb-1">Dashboard Overview</h1>
         <p className="text-gray-500 text-sm">
-          Welcome back! Here's what's happening with <span className="font-semibold text-gray-700">{biz.businessName || 'your business'}</span> today.
+          Welcome back! Here's what's happening with{' '}
+          <span className="font-semibold text-gray-700">{biz.businessName || 'your business'}</span> today.
         </p>
       </div>
 
-      {/* ── Subscription renewal banner ─────────────────────────────────── */}
+      {/* ── Subscription renewal banner ──────────────────────────────────── */}
       {showRenewBanner && (
         <motion.div
           initial={{ opacity: 0, y: -8 }} animate={{ opacity: 1, y: 0 }}
@@ -325,16 +256,21 @@ const Dashboard = () => {
               <p className="text-sm text-red-600">Renew now to avoid losing dashboard access.</p>
             </div>
           </div>
-          <Button icon={RefreshCw} onClick={() => setRenewModalOpen(true)} className="flex-shrink-0">
+          <Button icon={RefreshCw} onClick={() => setPaymentModalOpen(true)} className="flex-shrink-0">
             Renew Now
           </Button>
         </motion.div>
       )}
 
-      {/* ── Stat cards ──────────────────────────────────────────────────── */}
+      {/* ── Stat cards ────────────────────────────────────────────────────── */}
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
         {statCards.map((stat, i) => (
-          <motion.div key={stat.title} initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: i * 0.08 }}>
+          <motion.div
+            key={stat.title}
+            initial={{ opacity: 0, y: 20 }}
+            animate={{ opacity: 1, y: 0 }}
+            transition={{ delay: i * 0.08 }}
+          >
             <Card className="relative overflow-hidden">
               <div className={`absolute top-0 right-0 w-28 h-28 ${stat.bgColor} opacity-10 rounded-full -mr-14 -mt-14`} />
               <div className="relative">
@@ -352,10 +288,10 @@ const Dashboard = () => {
         ))}
       </div>
 
-      {/* ── Bottom row: Recent orders + Subscription card ─────────────── */}
+      {/* ── Bottom row: Recent Orders + Subscription card ─────────────────── */}
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
 
-        {/* Recent Orders — takes 2/3 width */}
+        {/* Recent Orders — 2/3 width */}
         <div className="lg:col-span-2">
           <Card title="Recent Orders" subtitle="Latest orders from your customers">
             {recentOrders.length === 0 ? (
@@ -366,7 +302,9 @@ const Dashboard = () => {
                   <thead>
                     <tr className="border-b border-gray-100">
                       {['Order', 'Customer', 'Amount', 'Status', 'Time'].map(h => (
-                        <th key={h} className="text-left py-2.5 px-3 text-xs font-semibold text-gray-500 uppercase tracking-wide">{h}</th>
+                        <th key={h} className="text-left py-2.5 px-3 text-xs font-semibold text-gray-500 uppercase tracking-wide">
+                          {h}
+                        </th>
                       ))}
                     </tr>
                   </thead>
@@ -447,10 +385,10 @@ const Dashboard = () => {
                 {/* Stats pills */}
                 <div className="grid grid-cols-2 gap-2 mt-4">
                   {[
-                    { label: 'Orders',     val: stats?.totalOrders    || 0 },
-                    { label: 'Customers',  val: stats?.totalCustomers || 0 },
-                    { label: 'Revenue',    val: formatCurrency(stats?.totalRevenue || 0) },
-                    { label: 'Delivered',  val: stats?.deliveredOrders || 0 },
+                    { label: 'Orders',    val: stats?.totalOrders    || 0 },
+                    { label: 'Customers', val: stats?.totalCustomers || 0 },
+                    { label: 'Revenue',   val: formatCurrency(stats?.totalRevenue || 0) },
+                    { label: 'Delivered', val: stats?.deliveredOrders || 0 },
                   ].map(({ label, val }) => (
                     <div key={label} className="p-2.5 bg-gray-50 rounded-lg text-center">
                       <p className="text-xs text-gray-400">{label}</p>
@@ -464,7 +402,7 @@ const Dashboard = () => {
                   size="sm"
                   icon={RefreshCw}
                   variant={showRenewBanner ? 'primary' : 'outline'}
-                  onClick={() => setRenewModalOpen(true)}
+                  onClick={() => setPaymentModalOpen(true)}
                   className="mt-4"
                 >
                   {showRenewBanner ? 'Renew Subscription' : 'Upgrade / Renew'}
@@ -475,93 +413,16 @@ const Dashboard = () => {
         </div>
       </div>
 
-      {/* ── Renew Modal ──────────────────────────────────────────────────── */}
-      <Modal
-        isOpen={renewModalOpen}
-        onClose={handleModalClose}
-        title={
-          paymentStep === 'success' ? '✅ Request Submitted!' :
-          paymentStep === 'payment' ? 'Processing Payment…'   :
-          'Renew / Upgrade Plan'
-        }
-        size="lg"
-      >
-        {paymentStep === 'select' && (
-          <div className="space-y-4">
-            <p className="text-sm text-gray-600">Choose a plan to continue. Access is restored after payment confirmation.</p>
-            <div className="space-y-3">
-              {PLANS.map(p => <PlanOption key={p.id} plan={p} selected={selectedPlan === p.id} onSelect={setSelectedPlan} />)}
-            </div>
-            <div className="p-4 bg-gray-50 rounded-xl text-xs text-gray-600 space-y-1">
-              <p className="font-semibold text-gray-800 text-sm mb-2">📋 How it works</p>
-              <p>1. Select your plan and click Proceed to Payment</p>
-              <p>2. Complete payment via bank transfer</p>
-              <p>3. Your subscription is activated within 24 hours</p>
-            </div>
-            <div className="flex gap-3">
-              <Button fullWidth icon={ArrowRight} onClick={() => setPaymentStep('payment')}>Proceed to Payment</Button>
-              <Button variant="outline" fullWidth onClick={handleModalClose}>Cancel</Button>
-            </div>
-          </div>
-        )}
-
-        {paymentStep === 'payment' && (
-          <div className="space-y-5 py-2">
-            <div className="text-center">
-              <div className="w-14 h-14 bg-primary-100 rounded-full flex items-center justify-center mx-auto mb-3">
-                <CreditCard className="w-7 h-7 text-primary-600" />
-              </div>
-              <p className="font-bold text-gray-900 text-lg">{PLANS.find(p => p.id === selectedPlan)?.name} Plan</p>
-              <p className="text-2xl font-black text-primary-600">{PLANS.find(p => p.id === selectedPlan)?.price}</p>
-              <p className="text-sm text-gray-400">{PLANS.find(p => p.id === selectedPlan)?.period}</p>
-            </div>
-            <div className="p-4 bg-gray-50 border border-gray-200 rounded-xl text-sm space-y-2">
-              <p className="font-semibold text-gray-800">Bank Transfer Details</p>
-              {[
-                ['Bank',         'First Bank Nigeria'],
-                ['Account Name', 'Olumah Lucky George'],
-                ['Account No',   '3117923181'],
-                ['Amount',       PLANS.find(p => p.id === selectedPlan)?.price],
-                ['Reference',    `${currentBusiness?.slug?.toUpperCase()}-${selectedPlan.toUpperCase()}`],
-              ].map(([label, val]) => (
-                <div key={label} className="flex justify-between">
-                  <span className="text-gray-500">{label}:</span>
-                  <span className="font-mono font-semibold text-gray-900">{val}</span>
-                </div>
-              ))}
-            </div>
-            <p className="text-xs text-center text-gray-400">After transfer, click below to notify our team. Subscription activated within 24h.</p>
-            <div className="flex gap-3">
-              <Button fullWidth icon={CheckCircle} loading={processing} onClick={handlePayment}>
-                I've Made the Payment
-              </Button>
-              <Button variant="outline" fullWidth onClick={() => setPaymentStep('select')} disabled={processing}>Back</Button>
-            </div>
-          </div>
-        )}
-
-        {paymentStep === 'success' && (
-          <div className="text-center py-6 space-y-4">
-            <motion.div initial={{ scale: 0 }} animate={{ scale: 1 }} transition={{ type: 'spring', stiffness: 200 }}
-              className="w-20 h-20 bg-green-100 rounded-full flex items-center justify-center mx-auto">
-              <CheckCircle className="w-10 h-10 text-green-500" />
-            </motion.div>
-            <div>
-              <p className="text-xl font-bold text-gray-900">Request Received!</p>
-              <p className="text-gray-500 text-sm mt-2">
-                Our team has been notified. Your subscription will be activated within 24 hours.
-              </p>
-            </div>
-            <div className="p-4 bg-green-50 border border-green-200 rounded-xl text-sm text-green-800 text-left space-y-1">
-              <p className="font-semibold">What happens next?</p>
-              <p>✅ Payment confirmation sent to our team</p>
-              <p>⏳ Subscription activated within 24 hours</p>
-              <p>📧 You'll receive a confirmation notification</p>
-            </div>
-            <Button fullWidth onClick={handleModalClose}>Close</Button>
-          </div>
-        )}
-      </Modal>
+      {/* ── Payment Modal (real gateway + bank transfer fallback) ─────────── */}
+      <PaymentModal
+        isOpen={paymentModalOpen}
+        onClose={() => setPaymentModalOpen(false)}
+        business={biz}
+        onPaymentSuccess={() => {
+          setPaymentModalOpen(false);
+          fetchSubscription(); // ✅ refreshes subscription status after successful payment
+        }}
+      />
     </div>
   );
 };
