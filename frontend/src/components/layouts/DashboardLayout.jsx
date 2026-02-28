@@ -4,7 +4,8 @@ import React, { useState, useEffect } from 'react';
 import { Outlet, NavLink, useNavigate } from 'react-router-dom';
 import {
   LayoutDashboard, Package, ShoppingCart, Users, Settings,
-  LogOut, Menu, X, Building2, ChevronDown, Star, CreditCard, AlertCircle
+  LogOut, Menu, X, Building2, ChevronDown, Star, CreditCard,
+  AlertCircle, MessageSquare,
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
 import useAuthStore from '../../stores/authStore';
@@ -34,12 +35,13 @@ const DashboardLayout = () => {
   const subUrgent = subDays !== null && subDays <= 7;
 
   const navItems = [
-    { name: 'Dashboard',    path: '/dashboard',               icon: LayoutDashboard },
-    { name: 'Products',     path: '/dashboard/products',      icon: Package         },
-    { name: 'Orders',       path: '/dashboard/orders',        icon: ShoppingCart    },
-    { name: 'Users & Team', path: '/dashboard/users',         icon: Users           },
-    { name: 'Reviews',      path: '/dashboard/reviews',       icon: Star            },
-    { name: 'Settings',     path: '/dashboard/settings',      icon: Settings        },
+    { name: 'Dashboard',    path: '/dashboard',              icon: LayoutDashboard },
+    { name: 'Products',     path: '/dashboard/products',     icon: Package         },
+    { name: 'Orders',       path: '/dashboard/orders',       icon: ShoppingCart    },
+    { name: 'Users & Team', path: '/dashboard/users',        icon: Users           },
+    { name: 'Reviews',      path: '/dashboard/reviews',      icon: Star            },
+    { name: 'Ratings',      path: '/dashboard/ratings',      icon: MessageSquare   },
+    { name: 'Settings',     path: '/dashboard/settings',     icon: Settings        },
     {
       name: 'Subscription',
       path: '/dashboard/subscription',
