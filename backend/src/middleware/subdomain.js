@@ -25,15 +25,7 @@ function parseSlugFromHostname(hostname) {
   return parts[0];
 }
 
-/**
- * Middleware: extract and attach business context from the incoming request.
- *
- * Priority order for resolving the slug:
- *   1. X-Business-Subdomain header  ← sent by the Vite proxy (api.js interceptor)
- *   2. Parsed from the Host / hostname header (production direct requests)
- *
- * ✅ BUG FIX: was reading 'X-Business-Slug' but api.js sends 'X-Business-Subdomain'
- */
+
 async function extractSubdomain(req, res, next) {
   try {
     const hostname = req.hostname || req.get('host');

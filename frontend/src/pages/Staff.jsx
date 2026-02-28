@@ -3,7 +3,7 @@ import React, { useState, useEffect } from 'react';
 import { Plus, Edit, Trash2, UserCheck, UserX } from 'lucide-react';
 import { motion } from 'framer-motion';
 import toast from 'react-hot-toast';
-import { Card, Button, Badge, Modal, Select, LoadingSpinner, EmptyState } from '../components/shared';
+import { Card, Button, Badge, Modal, Select, LoadingSpinner, EmptyState, Input } from '../components/shared';
 import staffService from '../services/staffService';
 import { formatDate, getInitials } from '../utils/helpers';
 
