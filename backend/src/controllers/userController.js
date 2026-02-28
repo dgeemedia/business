@@ -2,30 +2,19 @@
 const bcrypt = require('bcrypt');
 const prisma = require('../lib/prisma');
 
-/**
- * Resolve businessId with consistent priority:
- *   1. req.businessId        – subdomain middleware
- *   2. req.user?.businessId  – logged-in user's own business
- */
 function resolveBusinessId(req) {
   return req.businessId || req.user?.businessId || null;
 }
 
 // ============================================================================
-// GET ALL USERS - WITH TENANT ISOLATION
+// GET ALL USERS
 // ============================================================================
 async function getAllUsers(req, res) {
   const where = {};
 
-  // Super-admin on a subdomain → scope to that subdomain's business.
-  // Super-admin on bare localhost (no subdomain) → sees all users.
-  // Admin / staff → always scoped to their own business.
   if (req.user.role === 'super-admin') {
-    const subdomainBiz = req.businessId; // from subdomain middleware
-    if (subdomainBiz) {
-      where.businessId = subdomainBiz;
-    }
-    // else: no filter – intentional for the "manage all tenants" view
+    const subdomainBiz = req.businessId;
+    if (subdomainBiz) where.businessId = subdomainBiz;
   } else {
     where.businessId = req.user.businessId;
   }
@@ -46,35 +35,43 @@ async function getAllUsers(req, res) {
     orderBy: { createdAt: 'desc' },
   });
 
-  res.json(users);
+  // Normalize for frontend: expose `name` and `isActive`
+  const normalized = users.map(u => ({
+    ...u,
+    name: [u.firstName, u.lastName].filter(Boolean).join(' ') || '',
+    isActive: u.active,
+  }));
+
+  res.json(normalized);
 }
 
 // ============================================================================
-// CREATE USER - WITH BUSINESS ASSIGNMENT
+// CREATE USER
 // ============================================================================
 async function createUser(req, res) {
-  const { email, password, firstName, lastName, phone, role, businessId } = req.body;
+  const { email, password, name, firstName, lastName, phone, role, businessId } = req.body;
 
   if (!email || !password) {
-    throw new Error('Email and password required');
+    return res.status(400).json({ ok: false, error: 'Email and password required' });
   }
 
   if (req.user.role === 'staff') {
     return res.status(403).json({ ok: false, error: 'Staff cannot create users' });
   }
 
-  // ── Determine which business the new user belongs to ─────────────────────
-  let assignedBusinessId;
+  // Split `name` into firstName/lastName if provided as a single field
+  let first = firstName || '';
+  let last  = lastName  || '';
+  if (name && !firstName && !lastName) {
+    const parts = name.trim().split(/\s+/);
+    first = parts[0] || '';
+    last  = parts.slice(1).join(' ') || '';
+  }
 
+  let assignedBusinessId;
   if (req.user.role === 'super-admin') {
-    if (role === 'super-admin') {
-      assignedBusinessId = null;          // super-admins are not tied to a business
-    } else {
-      // Explicit body > subdomain > null
-      assignedBusinessId = businessId || resolveBusinessId(req) || null;
-    }
+    assignedBusinessId = role === 'super-admin' ? null : (businessId || resolveBusinessId(req) || null);
   } else {
-    // Admin: always assign to their own business
     assignedBusinessId = req.user.businessId;
   }
 
@@ -89,7 +86,7 @@ async function createUser(req, res) {
 
   const existing = await prisma.user.findUnique({ where: { email } });
   if (existing) {
-    throw new Error('User already exists');
+    return res.status(400).json({ ok: false, error: 'User already exists' });
   }
 
   const passwordHash = await bcrypt.hash(password, 12);
@@ -100,9 +97,9 @@ async function createUser(req, res) {
       passwordHash,
       role:       role || 'staff',
       businessId: assignedBusinessId,
-      firstName:  firstName || '',
-      lastName:   lastName  || '',
-      phone:      phone     || '',
+      firstName:  first,
+      lastName:   last,
+      phone:      phone || '',
       active:     true,
     },
     select: {
@@ -111,37 +108,78 @@ async function createUser(req, res) {
     },
   });
 
-  console.log(`✅ User created: ${user.email} (${user.role}) by ${req.user.email} – Business: ${assignedBusinessId || 'none'}`);
+  console.log(`✅ User created: ${user.email} (${user.role}) by ${req.user.email}`);
   res.status(201).json({ ok: true, user });
 }
 
 // ============================================================================
-// UPDATE USER - WITH TENANT SECURITY
+// UPDATE USER
 // ============================================================================
 async function updateUser(req, res) {
   const userId = Number(req.params.id);
-  const { role, active, ...otherUpdates } = req.body;
+
+  // Destructure ALL known frontend fields so nothing bleeds into updateData raw
+  const {
+    password,
+    name,
+    firstName,
+    lastName,
+    email,       // email changes are intentionally ignored for safety
+    role,
+    active,
+    isActive,    // frontend might send isActive instead of active
+    phone,
+    ...rest      // anything else (unknown keys — discarded below)
+  } = req.body;
 
   const targetUser = await prisma.user.findUnique({ where: { id: userId } });
   if (!targetUser) {
     return res.status(404).json({ ok: false, error: 'User not found' });
   }
 
-  // Tenant check: non-super-admin can only touch users in their own business
+  // Tenant check
   if (req.user.role !== 'super-admin' && targetUser.businessId !== req.user.businessId) {
     return res.status(403).json({ ok: false, error: 'You cannot manage users from another business' });
   }
-
   if (req.user.role === 'admin' && targetUser.role === 'super-admin') {
     return res.status(403).json({ ok: false, error: 'Admin cannot modify super-admin accounts' });
   }
   if (req.user.role === 'admin' && role === 'super-admin') {
-    return res.status(403).json({ ok: false, error: 'Admin cannot create or promote to super-admin' });
+    return res.status(403).json({ ok: false, error: 'Admin cannot promote to super-admin' });
   }
 
-  const updateData = { ...otherUpdates };
+  // Build a clean updateData with only valid Prisma fields
+  const updateData = {};
+
+  // Handle name → firstName / lastName split
+  if (name && !firstName && !lastName) {
+    const parts = name.trim().split(/\s+/);
+    updateData.firstName = parts[0] || '';
+    updateData.lastName  = parts.slice(1).join(' ') || '';
+  } else {
+    if (firstName !== undefined) updateData.firstName = firstName;
+    if (lastName  !== undefined) updateData.lastName  = lastName;
+  }
+
+  if (phone  !== undefined) updateData.phone  = phone;
   if (role   !== undefined) updateData.role   = role;
-  if (active !== undefined) updateData.active = active;
+
+  // Support both `active` and `isActive` from frontend
+  const activeVal = active !== undefined ? active : isActive;
+  if (activeVal !== undefined) updateData.active = Boolean(activeVal);
+
+  // Hash password only if provided and non-empty
+  if (password && password.trim().length > 0) {
+    if (password.length < 8) {
+      return res.status(400).json({ ok: false, error: 'Password must be at least 8 characters' });
+    }
+    updateData.passwordHash = await bcrypt.hash(password, 12);
+  }
+
+  // Safety: if nothing to update, return current user
+  if (Object.keys(updateData).length === 0) {
+    return res.json({ ok: true, user: targetUser });
+  }
 
   const user = await prisma.user.update({
     where: { id: userId },
@@ -184,10 +222,7 @@ async function suspendUser(req, res) {
   const user = await prisma.user.update({
     where: { id: userId },
     data:  { active: false },
-    select: {
-      id: true, email: true, role: true, businessId: true,
-      firstName: true, lastName: true, active: true,
-    },
+    select: { id: true, email: true, role: true, businessId: true, firstName: true, lastName: true, active: true },
   });
 
   console.log(`⚠️ User suspended: ${user.email} by ${req.user.email}`);
@@ -212,14 +247,35 @@ async function reactivateUser(req, res) {
   const user = await prisma.user.update({
     where: { id: userId },
     data:  { active: true },
-    select: {
-      id: true, email: true, role: true, businessId: true,
-      firstName: true, lastName: true, active: true,
-    },
+    select: { id: true, email: true, role: true, businessId: true, firstName: true, lastName: true, active: true },
   });
 
   console.log(`✅ User reactivated: ${user.email} by ${req.user.email}`);
   res.json({ ok: true, message: 'User reactivated', user });
+}
+
+// ============================================================================
+// TOGGLE (legacy endpoint — kept for backwards compat)
+// ============================================================================
+async function toggleUserStatus(req, res) {
+  const userId = Number(req.params.id);
+
+  const targetUser = await prisma.user.findUnique({ where: { id: userId } });
+  if (!targetUser) {
+    return res.status(404).json({ ok: false, error: 'User not found' });
+  }
+
+  if (req.user.role !== 'super-admin' && targetUser.businessId !== req.user.businessId) {
+    return res.status(403).json({ ok: false, error: 'Access denied' });
+  }
+
+  const user = await prisma.user.update({
+    where: { id: userId },
+    data:  { active: !targetUser.active },
+    select: { id: true, email: true, role: true, active: true },
+  });
+
+  res.json({ ok: true, user });
 }
 
 // ============================================================================
@@ -259,5 +315,6 @@ module.exports = {
   updateUser,
   suspendUser,
   reactivateUser,
+  toggleUserStatus,
   deleteUser,
 };

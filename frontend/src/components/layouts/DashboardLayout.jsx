@@ -1,10 +1,14 @@
+// frontend/src/components/layouts/DashboardLayout.jsx
+// ✅ CHANGED: Removed "Staff" nav item (merged into Users.jsx)
+// ✅ ADDED:   "Subscription" nav item with expiry warning indicator
+
 import React, { useState, useEffect } from 'react';
 import { Outlet, NavLink, useNavigate } from 'react-router-dom';
-import { 
-  LayoutDashboard, 
-  Package, 
-  ShoppingCart, 
-  Users, 
+import {
+  LayoutDashboard,
+  Package,
+  ShoppingCart,
+  Users,
   Settings,
   Bell,
   LogOut,
@@ -12,13 +16,14 @@ import {
   X,
   Building2,
   ChevronDown,
-  UserPlus,
-  Star
+  Star,
+  CreditCard,
+  AlertCircle
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
 import useAuthStore from '../../stores/authStore';
 import useBusinessStore from '../../stores/businessStore';
-import { getInitials } from '../../utils/helpers';
+import { getInitials, daysUntil } from '../../utils/helpers';
 
 const DashboardLayout = () => {
   const navigate = useNavigate();
@@ -32,20 +37,68 @@ const DashboardLayout = () => {
     fetchCurrentBusiness();
   }, [fetchCurrentBusiness]);
 
+  // Compute subscription urgency for badge
+  const subExpiry = currentBusiness?.subscriptionExpiry || currentBusiness?.trialEndsAt;
+  const subDays   = subExpiry ? daysUntil(subExpiry) : null;
+  const subUrgent = subDays !== null && subDays <= 7;
+
   const navItems = [
-    { name: 'Dashboard', path: '/dashboard', icon: LayoutDashboard },
-    { name: 'Products', path: '/dashboard/products', icon: Package },
-    { name: 'Orders', path: '/dashboard/orders', icon: ShoppingCart },
-    { name: 'Users', path: '/dashboard/users', icon: Users },
-    { name: 'Staff', path: '/dashboard/staff', icon: UserPlus },
-    { name: 'Reviews', path: '/dashboard/reviews', icon: Star },
-    { name: 'Settings', path: '/dashboard/settings', icon: Settings },
+    { name: 'Dashboard',     path: '/dashboard',              icon: LayoutDashboard },
+    { name: 'Products',      path: '/dashboard/products',     icon: Package         },
+    { name: 'Orders',        path: '/dashboard/orders',       icon: ShoppingCart    },
+    { name: 'Users & Team',  path: '/dashboard/users',        icon: Users           },
+    { name: 'Reviews',       path: '/dashboard/reviews',      icon: Star            },
+    { name: 'Settings',      path: '/dashboard/settings',     icon: Settings        },
+    {
+      name: 'Subscription',
+      path: '/dashboard/subscription',
+      icon: CreditCard,
+      badge: subUrgent ? (subDays <= 0 ? '!' : `${subDays}d`) : null,
+      badgeVariant: subDays !== null && subDays <= 0 ? 'red' : 'orange',
+    },
   ];
 
   const handleLogout = () => {
     logout();
     navigate('/login');
   };
+
+  const NavItem = ({ item, onClick }) => (
+    <NavLink
+      to={item.path}
+      end={item.path === '/dashboard'}
+      onClick={onClick}
+      className={({ isActive }) =>
+        `flex items-center gap-3 px-4 py-3 rounded-lg transition-all relative ${
+          isActive
+            ? 'bg-primary-50 text-primary-700 font-medium'
+            : 'text-gray-700 hover:bg-gray-50'
+        }`
+      }
+    >
+      <item.icon className="w-5 h-5 flex-shrink-0" />
+      {sidebarOpen && (
+        <>
+          <span className="flex-1">{item.name}</span>
+          {item.badge && (
+            <span
+              className={`text-xs font-bold px-1.5 py-0.5 rounded-full ${
+                item.badgeVariant === 'red'
+                  ? 'bg-red-100 text-red-600'
+                  : 'bg-orange-100 text-orange-600'
+              }`}
+            >
+              {item.badge}
+            </span>
+          )}
+        </>
+      )}
+      {/* Dot indicator when sidebar is collapsed */}
+      {!sidebarOpen && item.badge && (
+        <span className="absolute top-1 right-1 w-2 h-2 bg-red-500 rounded-full" />
+      )}
+    </NavLink>
+  );
 
   return (
     <div className="min-h-screen bg-gray-50">
@@ -60,15 +113,17 @@ const DashboardLayout = () => {
           </button>
           <div className="flex items-center gap-2">
             <Building2 className="w-6 h-6 text-primary-600" />
-            <span className="font-bold text-lg">
-              {currentBusiness?.name || 'MyPadiBusiness'}
+            <span className="font-bold text-lg truncate max-w-[160px]">
+              {currentBusiness?.businessName || currentBusiness?.name || 'Dashboard'}
             </span>
           </div>
         </div>
-        
+
         <button className="p-2 hover:bg-gray-100 rounded-lg relative">
           <Bell className="w-5 h-5" />
-          <span className="absolute top-1 right-1 w-2 h-2 bg-red-500 rounded-full"></span>
+          {subUrgent && (
+            <span className="absolute top-1 right-1 w-2 h-2 bg-red-500 rounded-full" />
+          )}
         </button>
       </div>
 
@@ -82,12 +137,12 @@ const DashboardLayout = () => {
           {/* Logo */}
           <div className="h-16 flex items-center justify-between px-4 border-b border-gray-200">
             {sidebarOpen ? (
-              <div className="flex items-center gap-2">
-                <div className="w-8 h-8 bg-primary-600 rounded-lg flex items-center justify-center">
+              <div className="flex items-center gap-2 min-w-0">
+                <div className="w-8 h-8 bg-primary-600 rounded-lg flex items-center justify-center flex-shrink-0">
                   <Building2 className="w-5 h-5 text-white" />
                 </div>
-                <span className="font-bold text-lg">
-                  {currentBusiness?.name || 'MyPadiBusiness'}
+                <span className="font-bold text-base truncate">
+                  {currentBusiness?.businessName || currentBusiness?.name || 'Dashboard'}
                 </span>
               </div>
             ) : (
@@ -97,23 +152,26 @@ const DashboardLayout = () => {
             )}
           </div>
 
+          {/* Subscription warning banner */}
+          {sidebarOpen && subUrgent && (
+            <div className={`mx-3 mt-3 p-2.5 rounded-lg text-xs flex items-center gap-2 ${
+              subDays <= 0
+                ? 'bg-red-50 border border-red-200 text-red-700'
+                : 'bg-orange-50 border border-orange-200 text-orange-700'
+            }`}>
+              <AlertCircle className="w-4 h-4 flex-shrink-0" />
+              <span>
+                {subDays <= 0
+                  ? 'Subscription expired!'
+                  : `Expires in ${subDays} day${subDays !== 1 ? 's' : ''}`}
+              </span>
+            </div>
+          )}
+
           {/* Navigation */}
-          <nav className="flex-1 p-4 space-y-1">
+          <nav className="flex-1 p-4 space-y-1 overflow-y-auto">
             {navItems.map((item) => (
-              <NavLink
-                key={item.path}
-                to={item.path}
-                className={({ isActive }) =>
-                  `flex items-center gap-3 px-4 py-3 rounded-lg transition-all ${
-                    isActive
-                      ? 'bg-primary-50 text-primary-700 font-medium'
-                      : 'text-gray-700 hover:bg-gray-50'
-                  }`
-                }
-              >
-                <item.icon className="w-5 h-5 flex-shrink-0" />
-                {sidebarOpen && <span>{item.name}</span>}
-              </NavLink>
+              <NavItem key={item.path} item={item} />
             ))}
           </nav>
 
@@ -124,24 +182,21 @@ const DashboardLayout = () => {
               onClick={() => setUserMenuOpen(!userMenuOpen)}
             >
               <div className="w-10 h-10 bg-primary-600 rounded-full flex items-center justify-center text-white font-semibold flex-shrink-0">
-                {getInitials(user?.name || user?.email)}
+                {getInitials(user?.name || user?.firstName || user?.email)}
               </div>
               {sidebarOpen && (
                 <>
                   <div className="flex-1 min-w-0">
-                    <p className="font-medium text-gray-900 truncate">
-                      {user?.name || 'User'}
+                    <p className="font-medium text-gray-900 truncate text-sm">
+                      {user?.name || [user?.firstName, user?.lastName].filter(Boolean).join(' ') || 'User'}
                     </p>
-                    <p className="text-sm text-gray-500 truncate">
-                      {user?.email}
-                    </p>
+                    <p className="text-xs text-gray-500 truncate">{user?.email}</p>
                   </div>
-                  <ChevronDown className="w-4 h-4 text-gray-400" />
+                  <ChevronDown className="w-4 h-4 text-gray-400 flex-shrink-0" />
                 </>
               )}
             </div>
 
-            {/* User Dropdown */}
             <AnimatePresence>
               {userMenuOpen && sidebarOpen && (
                 <motion.div
@@ -162,12 +217,12 @@ const DashboardLayout = () => {
             </AnimatePresence>
           </div>
 
-          {/* Toggle Button */}
+          {/* Toggle */}
           <button
             onClick={() => setSidebarOpen(!sidebarOpen)}
             className="p-2 m-4 border border-gray-200 rounded-lg hover:bg-gray-50 hidden lg:block"
           >
-            <Menu className="w-5 h-5" />
+            <Menu className="w-5 h-5 mx-auto" />
           </button>
         </div>
       </aside>
@@ -194,6 +249,7 @@ const DashboardLayout = () => {
                   <NavLink
                     key={item.path}
                     to={item.path}
+                    end={item.path === '/dashboard'}
                     onClick={() => setMobileMenuOpen(false)}
                     className={({ isActive }) =>
                       `flex items-center gap-3 px-4 py-3 rounded-lg transition-all ${
@@ -204,7 +260,16 @@ const DashboardLayout = () => {
                     }
                   >
                     <item.icon className="w-5 h-5" />
-                    <span>{item.name}</span>
+                    <span className="flex-1">{item.name}</span>
+                    {item.badge && (
+                      <span className={`text-xs font-bold px-1.5 py-0.5 rounded-full ${
+                        item.badgeVariant === 'red'
+                          ? 'bg-red-100 text-red-600'
+                          : 'bg-orange-100 text-orange-600'
+                      }`}>
+                        {item.badge}
+                      </span>
+                    )}
                   </NavLink>
                 ))}
               </nav>
@@ -225,7 +290,9 @@ const DashboardLayout = () => {
 
       {/* Main Content */}
       <main
-        className={`lg:ml-${sidebarOpen ? '64' : '20'} pt-16 lg:pt-0 transition-all duration-300`}
+        className={`transition-all duration-300 ${
+          sidebarOpen ? 'lg:ml-64' : 'lg:ml-20'
+        } pt-16 lg:pt-0`}
       >
         <div className="p-6 lg:p-8 max-w-7xl mx-auto">
           <Outlet />
