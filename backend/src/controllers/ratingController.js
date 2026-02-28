@@ -7,10 +7,44 @@ function normalizePhone(phone) {
   return phone.replace(/\D/g, '');
 }
 
+// ── Shared eligibility check ──────────────────────────────────────────────────
+// A customer can rate if they have an order for that product with:
+//   status = 'DELIVERED'  (always required — they must have received it)
+//   paymentStatus is NOT checked additionally — delivery implies the order
+//   was fulfilled. This avoids the case where an admin marks delivered
+//   without explicitly hitting "confirm payment" first.
+async function findEligibleOrder(productId, normalizedPhone, businessId) {
+  return prisma.orderItem.findFirst({
+    where: {
+      productId: Number(productId),
+      order: {
+        phone:      normalizedPhone,
+        businessId,
+        status:     'DELIVERED',   // ✅ only DELIVERED required
+      },
+    },
+    include: {
+      order: { select: { status: true, paymentStatus: true } },
+    },
+  });
+}
+
+// ── Diagnostics: any order at all for this phone + product ───────────────────
+async function findAnyOrder(productId, normalizedPhone, businessId) {
+  return prisma.orderItem.findFirst({
+    where: {
+      productId: Number(productId),
+      order: { phone: normalizedPhone, businessId },
+    },
+    include: {
+      order: { select: { status: true, paymentStatus: true } },
+    },
+  });
+}
+
 // ============================================================================
 // SUBMIT OR UPDATE RATING
-// POST /api/products/:productId/ratings
-// Public — customer identified by the phone number used when ordering
+// POST /api/products/:productId/ratings  (public)
 // ============================================================================
 async function submitRating(req, res) {
   const { productId } = req.params;
@@ -33,47 +67,29 @@ async function submitRating(req, res) {
     return res.status(404).json({ success: false, error: 'Product not found' });
   }
 
-  // Tenant isolation
+  // Tenant isolation (when req.businessId is set via subdomain middleware)
   if (req.businessId && product.businessId !== req.businessId) {
     return res.status(403).json({ success: false, error: 'Product not available in this business' });
   }
 
-  // Must have a fully completed + delivered + payment-confirmed order for this product
-  const hasOrdered = await prisma.orderItem.findFirst({
-    where: {
-      productId: Number(productId),
-      order: {
-        phone:         normalizedPhone,
-        businessId:    product.businessId,
-        paymentStatus: 'CONFIRMED',
-        status:        'DELIVERED',
-      },
-    },
-  });
+  const eligibleOrder = await findEligibleOrder(productId, normalizedPhone, product.businessId);
 
-  if (!hasOrdered) {
-    // Give a specific reason if they have a partial order
-    const anyOrder = await prisma.orderItem.findFirst({
-      where: {
-        productId: Number(productId),
-        order: { phone: normalizedPhone, businessId: product.businessId },
-      },
-      include: { order: { select: { status: true, paymentStatus: true } } },
-    });
+  if (!eligibleOrder) {
+    const anyOrder = await findAnyOrder(productId, normalizedPhone, product.businessId);
 
-    let errorMessage = 'You can only rate products you have purchased and received';
+    let errorMessage = 'You can only rate products you have received. Place an order first.';
     if (anyOrder) {
-      if (anyOrder.order.paymentStatus !== 'CONFIRMED') {
-        errorMessage = 'Your order payment must be confirmed before you can rate this product';
-      } else if (anyOrder.order.status !== 'DELIVERED') {
-        errorMessage = `Your order must be delivered before you can rate (current status: ${anyOrder.order.status})`;
+      const { status } = anyOrder.order;
+      if (status === 'CANCELLED') {
+        errorMessage = 'Your order was cancelled. Only completed and delivered orders can be rated.';
+      } else if (status !== 'DELIVERED') {
+        errorMessage = `Your order must be delivered before you can rate (current status: ${status}). Please wait until your order arrives.`;
       }
     }
 
     return res.status(403).json({ success: false, error: errorMessage });
   }
 
-  // Upsert: one rating per phone per product
   const productRating = await prisma.productRating.upsert({
     where:  { productId_phone: { productId: Number(productId), phone: normalizedPhone } },
     update: { rating, comment: comment || null },
@@ -81,17 +97,18 @@ async function submitRating(req, res) {
   });
 
   const stats = await prisma.productRating.aggregate({
-    where: { productId: Number(productId) },
-    _avg:  { rating: true },
+    where:  { productId: Number(productId) },
+    _avg:   { rating: true },
     _count: true,
   });
 
-  await notify.review(product.businessId, product.name, rating);
+  // Non-blocking notification
+  notify.review(product.businessId, product.name, rating).catch(() => {});
 
   return res.json({
     success:       true,
     rating:        productRating,
-    averageRating: stats._avg.rating || 0,
+    averageRating: stats._avg.rating ? parseFloat(stats._avg.rating.toFixed(1)) : 0,
     totalRatings:  stats._count || 0,
   });
 }
@@ -131,13 +148,13 @@ async function getProductRatings(req, res) {
 
   const maskedRatings = ratings.map(r => ({
     ...r,
-    phone: r.phone.slice(-4).padStart(r.phone.length, '*'),
+    phone: r.phone ? r.phone.slice(-4).padStart(r.phone.length, '*') : '****',
   }));
 
   return res.json({
     success:       true,
     ratings:       maskedRatings,
-    averageRating: stats._avg.rating || 0,
+    averageRating: stats._avg.rating ? parseFloat(stats._avg.rating.toFixed(1)) : 0,
     totalRatings:  stats._count || 0,
     pagination: {
       total,
@@ -174,42 +191,51 @@ async function canRate(req, res) {
     return res.json({ success: true, canRate: false, hasRated: false, rating: null });
   }
 
-  const [hasOrdered, existingRating] = await Promise.all([
-    prisma.orderItem.findFirst({
-      where: {
-        productId: Number(productId),
-        order: {
-          phone:         normalizedPhone,
-          businessId:    product.businessId,
-          paymentStatus: 'CONFIRMED',
-          status:        'DELIVERED',
-        },
-      },
-    }),
+  const [eligibleOrder, existingRating, anyOrder] = await Promise.all([
+    findEligibleOrder(productId, normalizedPhone, product.businessId),
     prisma.productRating.findUnique({
       where: { productId_phone: { productId: Number(productId), phone: normalizedPhone } },
     }),
+    findAnyOrder(productId, normalizedPhone, product.businessId),
   ]);
+
+  // Build a helpful message if not eligible
+  let reason = null;
+  if (!eligibleOrder) {
+    if (!anyOrder) {
+      reason = 'No order found for this phone number. You can only rate products you have purchased.';
+    } else {
+      const { status } = anyOrder.order;
+      if (status === 'CANCELLED') {
+        reason = 'Your order was cancelled and cannot be rated.';
+      } else {
+        reason = `Your order must be delivered before you can rate (current status: ${status}).`;
+      }
+    }
+  }
 
   return res.json({
     success:  true,
-    canRate:  !!hasOrdered,
+    canRate:  !!eligibleOrder,
     hasRated: !!existingRating,
     rating:   existingRating || null,
+    reason,
   });
 }
 
 // ============================================================================
-// GET ALL RATINGS FOR BUSINESS (authenticated dashboard)
-// GET /api/ratings  — requires authMiddleware + businessId on req
+// GET ALL RATINGS FOR BUSINESS DASHBOARD
+// GET /api/ratings  (authenticated)
 // ============================================================================
 async function getBusinessRatings(req, res) {
-  if (!req.businessId) {
+  if (!req.businessId && !req.user?.businessId) {
     return res.status(401).json({ success: false, error: 'Business context required' });
   }
 
+  const businessId = req.businessId || req.user.businessId;
+
   const ratings = await prisma.productRating.findMany({
-    where:   { product: { businessId: req.businessId } },
+    where:   { product: { businessId } },
     orderBy: { createdAt: 'desc' },
     include: { product: { select: { id: true, name: true } } },
     take:    200,
@@ -219,7 +245,7 @@ async function getBusinessRatings(req, res) {
     id:          r.id,
     productId:   r.productId,
     productName: r.product?.name,
-    phoneNumber: r.phone.slice(-4).padStart(r.phone.length, '*'),
+    phoneNumber: r.phone ? r.phone.slice(-4).padStart(r.phone.length, '*') : '****',
     rating:      r.rating,
     review:      r.comment,
     createdAt:   r.createdAt,

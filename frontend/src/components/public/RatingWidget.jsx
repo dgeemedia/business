@@ -1,14 +1,10 @@
 // frontend/src/components/public/RatingWidget.jsx
-// Shown on the product detail / after adding to cart.
-// A customer enters the phone number they ordered with, sees whether
-// they can rate, and submits (or updates) a 1–5 star rating + comment.
-
-import React, { useState, useEffect } from 'react';
+import React, { useState } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
-import { Star, Phone, Send, CheckCircle, Loader2, X } from 'lucide-react';
+import { Star, Phone, Send, CheckCircle, Loader2, X, AlertCircle } from 'lucide-react';
 import ratingService from '../../services/ratingService';
 
-// ── Star input ────────────────────────────────────────────────────────────────
+// ── Star input ─────────────────────────────────────────────────────────────────
 function StarInput({ value, onChange, disabled }) {
   const [hovered, setHovered] = useState(0);
   return (
@@ -38,20 +34,26 @@ function StarInput({ value, onChange, disabled }) {
 
 const LABEL = ['', 'Terrible', 'Poor', 'Average', 'Good', 'Excellent'];
 
-export default function RatingWidget({ productId, productName, primary = '#10B981', dark = false, onClose }) {
-  const [phone,    setPhone]    = useState('');
-  const [verified, setVerified] = useState(false);   // true after canRate check passes
-  const [canRate,  setCanRate]  = useState(false);
-  const [hasRated, setHasRated] = useState(false);
-  const [existing, setExisting] = useState(null);
-  const [rating,   setRating]   = useState(0);
-  const [comment,  setComment]  = useState('');
-  const [checking, setChecking] = useState(false);
+export default function RatingWidget({
+  productId,
+  productName,
+  primary = '#10B981',
+  dark    = false,
+  onClose,
+}) {
+  const [phone,      setPhone]      = useState('');
+  const [verified,   setVerified]   = useState(false);
+  const [canRate,    setCanRate]    = useState(false);
+  const [hasRated,   setHasRated]   = useState(false);
+  const [existing,   setExisting]   = useState(null);
+  const [rating,     setRating]     = useState(0);
+  const [comment,    setComment]    = useState('');
+  const [checking,   setChecking]   = useState(false);
   const [submitting, setSubmitting] = useState(false);
   const [submitted,  setSubmitted]  = useState(false);
-  const [error,    setError]    = useState('');
+  const [error,      setError]      = useState('');
 
-  // ── Step 1: verify phone ─────────────────────────────────────────────────
+  // ── Step 1: verify phone ───────────────────────────────────────────────────
   async function handleVerify(e) {
     e.preventDefault();
     if (!phone.trim()) return;
@@ -67,8 +69,9 @@ export default function RatingWidget({ productId, productName, primary = '#10B98
         setRating(data.rating.rating);
         setComment(data.rating.comment || '');
       }
-      if (!data.canRate) {
-        setError('This phone number has no completed & delivered order for this product.');
+      // Use server-provided reason if not eligible
+      if (!data.canRate && data.reason) {
+        setError(data.reason);
       }
     } catch (err) {
       setError(err.response?.data?.error || 'Verification failed. Please try again.');
@@ -77,7 +80,7 @@ export default function RatingWidget({ productId, productName, primary = '#10B98
     }
   }
 
-  // ── Step 2: submit rating ─────────────────────────────────────────────────
+  // ── Step 2: submit rating ──────────────────────────────────────────────────
   async function handleSubmit(e) {
     e.preventDefault();
     if (!rating) return setError('Please select a star rating.');
@@ -93,11 +96,11 @@ export default function RatingWidget({ productId, productName, primary = '#10B98
     }
   }
 
-  const bg    = dark ? '#1c1c1e' : '#ffffff';
-  const border= dark ? 'rgba(255,255,255,.1)' : '#e5e7eb';
-  const text  = dark ? '#f0f0f0' : '#111827';
-  const sub   = dark ? 'rgba(255,255,255,.45)' : '#6B7280';
-  const inputBg = dark ? 'rgba(255,255,255,.06)' : '#F9FAFB';
+  const bg      = dark ? '#1c1c1e'                    : '#ffffff';
+  const border  = dark ? 'rgba(255,255,255,.1)'        : '#e5e7eb';
+  const text    = dark ? '#f0f0f0'                     : '#111827';
+  const sub     = dark ? 'rgba(255,255,255,.45)'       : '#6B7280';
+  const inputBg = dark ? 'rgba(255,255,255,.06)'       : '#F9FAFB';
 
   return (
     <motion.div
@@ -111,24 +114,29 @@ export default function RatingWidget({ productId, productName, primary = '#10B98
       <div className="flex items-center justify-between px-5 py-4 border-b" style={{ borderColor: border }}>
         <div>
           <h3 className="font-bold text-base" style={{ color: text }}>Rate this product</h3>
-          <p className="text-xs mt-0.5" style={{ color: sub }}>{productName}</p>
+          <p className="text-xs mt-0.5 line-clamp-1" style={{ color: sub }}>{productName}</p>
         </div>
         {onClose && (
-          <button onClick={onClose} className="p-1.5 rounded-lg hover:bg-black/5 transition-colors" style={{ color: sub }}>
+          <button
+            onClick={onClose}
+            className="p-1.5 rounded-lg hover:bg-black/5 transition-colors"
+            style={{ color: sub }}
+          >
             <X className="w-4 h-4" />
           </button>
         )}
       </div>
 
       <div className="p-5">
-        {/* ── Success state ───────────────────────────────────────────────── */}
+        {/* ── Success ─────────────────────────────────────────────────────── */}
         {submitted ? (
           <motion.div
             initial={{ opacity: 0, scale: 0.95 }}
             animate={{ opacity: 1, scale: 1 }}
             className="flex flex-col items-center justify-center py-6 text-center gap-3"
           >
-            <div className="w-14 h-14 rounded-full flex items-center justify-center" style={{ background: `${primary}20` }}>
+            <div className="w-14 h-14 rounded-full flex items-center justify-center"
+              style={{ background: `${primary}20` }}>
               <CheckCircle className="w-8 h-8" style={{ color: primary }} />
             </div>
             <p className="font-bold text-base" style={{ color: text }}>
@@ -147,7 +155,7 @@ export default function RatingWidget({ productId, productName, primary = '#10B98
           </motion.div>
         ) : (
           <AnimatePresence mode="wait">
-            {/* ── Step 1: phone verification ──────────────────────────────── */}
+            {/* ── Step 1: phone entry ─────────────────────────────────────── */}
             {!verified ? (
               <motion.form
                 key="verify"
@@ -156,7 +164,7 @@ export default function RatingWidget({ productId, productName, primary = '#10B98
                 className="space-y-4"
               >
                 <p className="text-sm" style={{ color: sub }}>
-                  Enter the phone number you used when placing your order.
+                  Enter the phone number you used when placing your order to verify your purchase.
                 </p>
 
                 <div>
@@ -173,10 +181,7 @@ export default function RatingWidget({ productId, productName, primary = '#10B98
                         placeholder="+234 800 000 0000"
                         required
                         className="w-full pl-9 pr-3 py-2.5 rounded-xl text-sm border focus:outline-none"
-                        style={{
-                          background: inputBg, borderColor: border,
-                          color: text,
-                        }}
+                        style={{ background: inputBg, borderColor: border, color: text }}
                       />
                     </div>
                     <button
@@ -191,11 +196,14 @@ export default function RatingWidget({ productId, productName, primary = '#10B98
                 </div>
 
                 {error && (
-                  <p className="text-sm text-red-500 bg-red-50 rounded-lg px-3 py-2">{error}</p>
+                  <div className="flex items-start gap-2 text-sm text-red-600 bg-red-50 rounded-xl px-3 py-2.5">
+                    <AlertCircle className="w-4 h-4 flex-shrink-0 mt-0.5" />
+                    <span>{error}</span>
+                  </div>
                 )}
               </motion.form>
             ) : (
-              /* ── Step 2: rating form ───────────────────────────────────── */
+              /* ── Step 2: rating form ──────────────────────────────────── */
               <motion.form
                 key="rate"
                 initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}
@@ -203,12 +211,16 @@ export default function RatingWidget({ productId, productName, primary = '#10B98
                 className="space-y-4"
               >
                 {!canRate ? (
-                  <div className="text-center py-4">
-                    <p className="text-sm font-medium" style={{ color: '#EF4444' }}>{error}</p>
+                  /* Not eligible */
+                  <div className="text-center py-4 space-y-3">
+                    <div className="w-12 h-12 rounded-full bg-red-50 flex items-center justify-center mx-auto">
+                      <AlertCircle className="w-6 h-6 text-red-500" />
+                    </div>
+                    <p className="text-sm font-medium text-red-600 leading-relaxed">{error}</p>
                     <button
                       type="button"
                       onClick={() => { setVerified(false); setPhone(''); setError(''); }}
-                      className="mt-3 text-xs underline"
+                      className="text-xs underline font-semibold"
                       style={{ color: primary }}
                     >
                       Try a different number
@@ -216,21 +228,26 @@ export default function RatingWidget({ productId, productName, primary = '#10B98
                   </div>
                 ) : (
                   <>
+                    {/* Already rated banner */}
                     {hasRated && (
                       <div className="flex items-center gap-2 px-3 py-2 rounded-xl text-xs font-medium"
                         style={{ background: `${primary}15`, color: primary }}>
-                        <CheckCircle className="w-3.5 h-3.5" />
-                        You've already rated this. You can update your rating below.
+                        <CheckCircle className="w-3.5 h-3.5 flex-shrink-0" />
+                        You've already rated this — you can update your review below.
                       </div>
                     )}
 
-                    {/* Stars */}
+                    {/* Star picker */}
                     <div>
-                      <p className="text-xs font-semibold mb-2 uppercase tracking-wide" style={{ color: sub }}>Your Rating</p>
+                      <p className="text-xs font-semibold mb-2 uppercase tracking-wide" style={{ color: sub }}>
+                        Your Rating
+                      </p>
                       <div className="flex items-center gap-3">
                         <StarInput value={rating} onChange={setRating} disabled={submitting} />
                         {rating > 0 && (
-                          <span className="text-sm font-semibold" style={{ color: primary }}>{LABEL[rating]}</span>
+                          <span className="text-sm font-semibold" style={{ color: primary }}>
+                            {LABEL[rating]}
+                          </span>
                         )}
                       </div>
                     </div>
@@ -251,7 +268,10 @@ export default function RatingWidget({ productId, productName, primary = '#10B98
                     </div>
 
                     {error && (
-                      <p className="text-sm text-red-500 bg-red-50 rounded-lg px-3 py-2">{error}</p>
+                      <div className="flex items-start gap-2 text-sm text-red-600 bg-red-50 rounded-xl px-3 py-2.5">
+                        <AlertCircle className="w-4 h-4 flex-shrink-0 mt-0.5" />
+                        <span>{error}</span>
+                      </div>
                     )}
 
                     <button
@@ -264,6 +284,16 @@ export default function RatingWidget({ productId, productName, primary = '#10B98
                         ? <><Loader2 className="w-4 h-4 animate-spin" /> Submitting…</>
                         : <><Send className="w-4 h-4" /> {hasRated ? 'Update Review' : 'Submit Review'}</>
                       }
+                    </button>
+
+                    {/* Step back */}
+                    <button
+                      type="button"
+                      onClick={() => { setVerified(false); setPhone(''); setError(''); }}
+                      className="w-full text-xs text-center underline"
+                      style={{ color: sub }}
+                    >
+                      Use a different phone number
                     </button>
                   </>
                 )}

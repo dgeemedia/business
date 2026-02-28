@@ -316,4 +316,81 @@ async function deleteOrder(req, res) {
   res.json({ success: true, message: 'Order deleted' });
 }
 
-module.exports = { checkout, getAllOrders, getOrderById, confirmPayment, updateOrderStatus, trackOrder, deleteOrder };
+// ============================================================================
+// GET ORDER STATS (Dashboard)
+// GET /api/orders/stats
+// Returns real numbers: revenue from CONFIRMED orders, unique customers, etc.
+// ============================================================================
+async function getOrderStats(req, res) {
+  const businessId = req.businessId || req.user?.businessId;
+  if (!businessId) return res.status(400).json({ error: 'Business context required' });
+
+  const [
+    totalOrdersCount,
+    confirmedOrders,
+    uniqueCustomers,
+    activeProducts,
+    pendingCount,
+    deliveredCount,
+    cancelledCount,
+    recentRevenue,   // revenue in last 30 days
+  ] = await Promise.all([
+
+    // All orders ever
+    prisma.order.count({ where: { businessId } }),
+
+    // Orders with confirmed payment — used for revenue
+    prisma.order.findMany({
+      where:  { businessId, paymentStatus: 'CONFIRMED' },
+      select: { totalAmount: true },
+    }),
+
+    // Unique customers = distinct phone numbers that placed orders
+    prisma.order.groupBy({
+      by:    ['phone'],
+      where: { businessId },
+      _count: { phone: true },
+    }),
+
+    // Active (available) products
+    prisma.product.count({ where: { businessId, isAvailable: true } }),
+
+    // Pending orders
+    prisma.order.count({ where: { businessId, status: 'PENDING' } }),
+
+    // Delivered orders
+    prisma.order.count({ where: { businessId, status: 'DELIVERED' } }),
+
+    // Cancelled orders
+    prisma.order.count({ where: { businessId, status: 'CANCELLED' } }),
+
+    // Revenue last 30 days (CONFIRMED payments)
+    prisma.order.findMany({
+      where: {
+        businessId,
+        paymentStatus: 'CONFIRMED',
+        createdAt: { gte: new Date(Date.now() - 30 * 24 * 60 * 60 * 1000) },
+      },
+      select: { totalAmount: true },
+    }),
+  ]);
+
+  const totalRevenue      = confirmedOrders.reduce((sum, o) => sum + Number(o.totalAmount), 0);
+  const recentRevenueAmt  = recentRevenue.reduce((sum, o)  => sum + Number(o.totalAmount), 0);
+  const totalCustomers    = uniqueCustomers.length;  // distinct phone numbers
+
+  return res.json({
+    success:        true,
+    totalRevenue,
+    recentRevenue:  recentRevenueAmt,
+    totalOrders:    totalOrdersCount,
+    totalCustomers,
+    activeProducts,
+    pendingOrders:   pendingCount,
+    deliveredOrders: deliveredCount,
+    cancelledOrders: cancelledCount,
+    confirmedOrders: confirmedOrders.length,
+  });
+}
+
+module.exports = { checkout, getAllOrders, getOrderById, confirmPayment, updateOrderStatus, trackOrder, deleteOrder, getOrderStats };
