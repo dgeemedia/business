@@ -108,6 +108,9 @@ app.use('/api/language', require('./routes/language'));
 // Onboarding routes
 app.use('/api/onboarding', onboardingRoutes);
 
+// Payment
+app.use('/api', require('./routes/payment'));
+
 // ============================================================================
 // ADMIN UTILITY ROUTES
 // ============================================================================

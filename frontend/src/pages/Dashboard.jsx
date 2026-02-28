@@ -519,8 +519,8 @@ const Dashboard = () => {
               <p className="font-semibold text-gray-800">Bank Transfer Details</p>
               {[
                 ['Bank',         'First Bank Nigeria'],
-                ['Account Name', 'MyPadi Business Ltd'],
-                ['Account No',   '0123456789'],
+                ['Account Name', 'Olumah Lucky George'],
+                ['Account No',   '3117923181'],
                 ['Amount',       PLANS.find(p => p.id === selectedPlan)?.price],
                 ['Reference',    `${currentBusiness?.slug?.toUpperCase()}-${selectedPlan.toUpperCase()}`],
               ].map(([label, val]) => (

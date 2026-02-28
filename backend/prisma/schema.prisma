@@ -32,6 +32,9 @@ model Business {
   trialStartDate      DateTime?
   trialEndsAt         DateTime?
   lastPaymentDate     DateTime?
+  lastPaymentRef      String?   // gateway tx_ref or "MANUAL-slug-timestamp"
+  lastPaymentAmount   Float?    // amount in NGN
+  lastPaymentProvider String?   // 'flutterwave' | 'paystack' | 'manual'
   subscriptionNotes   String?
 
   businessMotto       String?
