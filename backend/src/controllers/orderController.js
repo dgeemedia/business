@@ -1,24 +1,24 @@
 // backend/src/controllers/orderController.js
 const prisma = require('../lib/prisma');
-const { createNotification } = require('./notificationController');
+const notify = require('../lib/notify');
 
-/**
- * Resolve businessId with consistent priority:
- *   1. req.businessId        – subdomain middleware
- *   2. req.user?.businessId  – logged-in user's own business
- */
+const LOW_STOCK_THRESHOLD = 5;
+
 function resolveBusinessId(req) {
   return req.businessId || req.user?.businessId || null;
 }
 
-// Helper function to normalize phone numbers
 function normalizePhone(phone) {
   if (!phone) return '';
   return phone.replace(/\D/g, '');
 }
 
+function formatAmount(amount, currency = 'NGN') {
+  return `${currency} ${Number(amount).toLocaleString()}`;
+}
+
 // ============================================================================
-// CHECKOUT (Public) - WITH BUSINESS ASSIGNMENT
+// CHECKOUT (Public)
 // ============================================================================
 async function checkout(req, res) {
   const { customerName, phone, address, email, message, items } = req.body;
@@ -27,141 +27,100 @@ async function checkout(req, res) {
     throw new Error('Missing required fields');
   }
 
-  // 🔥 BUSINESS CONTEXT - Get from subdomain middleware
   const businessId = req.businessId;
-
   if (!businessId) {
     throw new Error('Business context required. Please access via proper subdomain.');
   }
 
   const normalizedPhone = normalizePhone(phone);
+  const productIds      = items.map(item => item.productId);
 
-  console.log(`📝 Creating order for business ${businessId}, phone:`, normalizedPhone);
-
-  let totalAmount = 0;
-  const orderItems = [];
-  const productUpdates = [];
-
-  const productIds = items.map(item => item.productId);
-
-  // 🔥 TENANT FILTER - Only get products from this business
   const products = await prisma.product.findMany({
-    where: {
-      id: { in: productIds },
-      businessId: businessId  // ✅ CRITICAL SECURITY CHECK
-    }
+    where: { id: { in: productIds }, businessId },
   });
 
   const productMap = new Map(products.map(p => [p.id, p]));
 
+  let totalAmount = 0;
+  const orderItems    = [];
+  const productUpdates = [];
+
   for (const item of items) {
     const product = productMap.get(item.productId);
-
-    if (!product) {
-      throw new Error(`Product ${item.productId} not found or not available`);
-    }
-
-    if (product.stock < item.quantity) {
-      throw new Error(`Insufficient stock for ${product.name}`);
-    }
+    if (!product)                       throw new Error(`Product ${item.productId} not found or not available`);
+    if (product.stock < item.quantity)  throw new Error(`Insufficient stock for ${product.name}`);
 
     totalAmount += product.price * item.quantity;
-    orderItems.push({
-      productId: product.id,
-      quantity: item.quantity,
-      unitPrice: product.price,
-    });
-    productUpdates.push({ id: product.id, quantity: item.quantity });
+    orderItems.push({ productId: product.id, quantity: item.quantity, unitPrice: product.price });
+    productUpdates.push({ id: product.id, quantity: item.quantity, newStock: product.stock - item.quantity, name: product.name });
   }
 
   const statusHistory = JSON.stringify([{
-    status: 'PENDING',
-    timestamp: new Date().toISOString(),
-    notes: 'Order created',
+    status: 'PENDING', timestamp: new Date().toISOString(), notes: 'Order created',
   }]);
 
   const order = await prisma.$transaction(async (tx) => {
     const newOrder = await tx.order.create({
       data: {
         customerName,
-        phone: normalizedPhone,
-        address: address || '',
-        email: email || '',
-        message: message || '',
+        phone:         normalizedPhone,
+        address:       address || '',
+        email:         email   || '',
+        message:       message || '',
         totalAmount,
-        currency: 'NGN',
+        currency:      'NGN',
         paymentStatus: 'PENDING',
-        status: 'PENDING',
+        status:        'PENDING',
         statusHistory,
-        businessId: businessId,  // 🔥 ASSIGN TO BUSINESS
+        businessId,
         items: { create: orderItems },
       },
     });
 
     await Promise.all(
       productUpdates.map(({ id, quantity }) =>
-        tx.product.update({
-          where: { id },
-          data: { stock: { decrement: quantity } },
-        })
+        tx.product.update({ where: { id }, data: { stock: { decrement: quantity } } })
       )
     );
 
     return newOrder;
-  }, {
-    maxWait: 10000,
-    timeout: 15000,
-  });
+  }, { maxWait: 10000, timeout: 15000 });
 
   const completeOrder = await prisma.order.findUnique({
     where: { id: order.id },
-    include: {
-      items: { include: { product: true } },
-    },
+    include: { items: { include: { product: true } } },
   });
 
-  // Create notification for new order (with businessId)
-  await createNotification({
-    type: 'order',
-    title: 'New Order',
-    message: `Order #${order.id} from ${customerName}`,
-    link: `/dashboard/orders/${order.id}`,
-    orderId: order.id,
-    businessId: businessId  // ✅ ADDED
-  });
+  // New order notification
+  await notify.order(businessId, order.id, customerName, formatAmount(totalAmount));
 
-  console.log(`✅ Order created successfully: ${completeOrder.id} for business ${businessId}`);
+  // Low stock warnings for products that dropped below threshold
+  for (const { id, name, newStock, businessId: bId } of productUpdates) {
+    if (newStock <= LOW_STOCK_THRESHOLD && newStock > 0) {
+      await notify.lowStock(businessId, id, name, newStock);
+    }
+  }
+
+  console.log(`✅ Order created: ${completeOrder.id} for business ${businessId}`);
 
   res.status(201).json({
     success: true,
-    order: {
-      ...completeOrder,
-      statusHistory: JSON.parse(completeOrder.statusHistory || '[]')
-    },
+    order: { ...completeOrder, statusHistory: JSON.parse(completeOrder.statusHistory || '[]') },
   });
 }
 
 // ============================================================================
-// CONFIRM PAYMENT - WITH TENANT SECURITY
+// CONFIRM PAYMENT
 // ============================================================================
 async function confirmPayment(req, res) {
   const { paymentMethod } = req.body;
 
-  const order = await prisma.order.findUnique({
-    where: { id: Number(req.params.id) },
-  });
+  const order = await prisma.order.findUnique({ where: { id: Number(req.params.id) } });
+  if (!order) throw new Error('Order not found');
 
-  if (!order) {
-    throw new Error('Order not found');
-  }
-
-  // 🔥 TENANT SECURITY CHECK
   const resolvedBiz = resolveBusinessId(req);
   if (req.user.role !== 'super-admin' && order.businessId !== resolvedBiz) {
-    return res.status(403).json({
-      success: false,
-      error: 'You cannot manage orders from another business'
-    });
+    return res.status(403).json({ success: false, error: 'You cannot manage orders from another business' });
   }
 
   const history = order.statusHistory ? JSON.parse(order.statusHistory) : [];
@@ -174,258 +133,160 @@ async function confirmPayment(req, res) {
   const updatedOrder = await prisma.order.update({
     where: { id: Number(req.params.id) },
     data: {
-      paymentStatus: 'CONFIRMED',
-      paymentMethod: paymentMethod || 'CASH',
+      paymentStatus:      'CONFIRMED',
+      paymentMethod:      paymentMethod || 'CASH',
       paymentConfirmedAt: new Date(),
       paymentConfirmedBy: req.user.id,
-      status: 'CONFIRMED',
-      statusHistory: JSON.stringify(history),
+      status:             'CONFIRMED',
+      statusHistory:      JSON.stringify(history),
     },
-    include: {
-      items: { include: { product: true } },
-    },
+    include: { items: { include: { product: true } } },
   });
 
-  // Create notification for payment confirmation
-  await createNotification({
-    type: 'payment',
-    title: 'Payment Confirmed',
-    message: `Payment for Order #${order.id} has been confirmed`,
-    link: `/dashboard/orders/${order.id}`,
-    orderId: order.id,
-    businessId: order.businessId  // ✅ ADDED
-  });
+  await notify.payment(
+    order.businessId,
+    order.id,
+    order.customerName,
+    formatAmount(order.totalAmount, order.currency)
+  );
 
   console.log('💰 Payment confirmed for order:', updatedOrder.id);
 
   res.json({
     success: true,
-    order: {
-      ...updatedOrder,
-      statusHistory: JSON.parse(updatedOrder.statusHistory)
-    }
+    order: { ...updatedOrder, statusHistory: JSON.parse(updatedOrder.statusHistory) },
   });
 }
 
 // ============================================================================
-// UPDATE ORDER STATUS - WITH TENANT SECURITY
+// UPDATE ORDER STATUS
 // ============================================================================
 async function updateOrderStatus(req, res) {
   const { status, notes } = req.body;
 
   const validStatuses = ['PENDING', 'CONFIRMED', 'PREPARING', 'OUT_FOR_DELIVERY', 'DELIVERED', 'CANCELLED'];
-  if (!validStatuses.includes(status)) {
-    throw new Error('Invalid status');
-  }
+  if (!validStatuses.includes(status)) throw new Error('Invalid status');
 
-  const order = await prisma.order.findUnique({
-    where: { id: Number(req.params.id) },
-  });
+  const order = await prisma.order.findUnique({ where: { id: Number(req.params.id) } });
+  if (!order) throw new Error('Order not found');
 
-  if (!order) {
-    throw new Error('Order not found');
-  }
-
-  // 🔥 TENANT SECURITY CHECK
   const resolvedBiz = resolveBusinessId(req);
   if (req.user.role !== 'super-admin' && order.businessId !== resolvedBiz) {
-    return res.status(403).json({
-      success: false,
-      error: 'You cannot manage orders from another business'
-    });
+    return res.status(403).json({ success: false, error: 'You cannot manage orders from another business' });
   }
 
   const history = order.statusHistory ? JSON.parse(order.statusHistory) : [];
-  history.push({
-    status,
-    timestamp: new Date().toISOString(),
-    notes: notes || `Status updated to ${status}`,
-  });
+  history.push({ status, timestamp: new Date().toISOString(), notes: notes || `Status updated to ${status}` });
 
   const updatedOrder = await prisma.order.update({
     where: { id: Number(req.params.id) },
-    data: {
-      status,
-      statusHistory: JSON.stringify(history),
-    },
-    include: {
-      items: { include: { product: true } },
-    },
+    data: { status, statusHistory: JSON.stringify(history) },
+    include: { items: { include: { product: true } } },
   });
 
-  // Create notification for important status changes
-  if (['DELIVERED', 'CANCELLED'].includes(status)) {
-    await createNotification({
-      type: 'order',
-      title: `Order ${status}`,
-      message: `Order #${order.id} has been ${status.toLowerCase()}`,
-      link: `/dashboard/orders/${order.id}`,
-      orderId: order.id,
-      businessId: order.businessId  // ✅ ADDED
-    });
+  // Notify on meaningful status changes
+  if (['DELIVERED', 'CANCELLED', 'OUT_FOR_DELIVERY'].includes(status)) {
+    await notify.orderStatus(order.businessId, order.id, status, order.customerName);
   }
 
   console.log(`📦 Order ${updatedOrder.id} status updated to:`, status);
 
   res.json({
     success: true,
-    order: {
-      ...updatedOrder,
-      statusHistory: JSON.parse(updatedOrder.statusHistory)
-    }
+    order: { ...updatedOrder, statusHistory: JSON.parse(updatedOrder.statusHistory) },
   });
 }
 
 // ============================================================================
-// GET ALL ORDERS - WITH TENANT ISOLATION
+// GET ALL ORDERS
 // ============================================================================
 async function getAllOrders(req, res) {
   const { page = 1, limit = 50, status, paymentStatus, search } = req.query;
-
   const where = {};
 
-  // 🔥 TENANT ISOLATION
-  // Priority: subdomain context > user's business > no filter (bare super-admin)
   if (req.user.role === 'super-admin') {
-    // If super-admin accessed via subdomain, scope to that subdomain's business
-    const subdomainBiz = req.businessId; // from subdomain middleware
-    if (subdomainBiz) {
-      where.businessId = subdomainBiz;
-      console.log(`🔒 Super-admin scoped to business ${subdomainBiz} via subdomain`);
-    } else {
-      console.log(`🌐 Super-admin on bare localhost — no tenant filter (sees all)`);
-    }
-    // else: no filter — super-admin on bare localhost sees all tenants
+    const subdomainBiz = req.businessId;
+    if (subdomainBiz) where.businessId = subdomainBiz;
   } else {
-    // Admin / staff always scoped to their own business
     where.businessId = req.user.businessId;
   }
 
-  if (status) where.status = status;
+  if (status)        where.status        = status;
   if (paymentStatus) where.paymentStatus = paymentStatus;
   if (search) {
-    const normalizedSearch = normalizePhone(search);
     where.OR = [
       { customerName: { contains: search, mode: 'insensitive' } },
-      { phone: { contains: normalizedSearch } },
+      { phone:        { contains: normalizePhone(search) } },
     ];
   }
 
   const [orders, total] = await Promise.all([
     prisma.order.findMany({
       where,
-      skip: (page - 1) * limit,
-      take: Number(limit),
-      orderBy: { createdAt: 'desc' },
-      include: {
-        items: { include: { product: true } },
-      },
+      skip:     (page - 1) * limit,
+      take:     Number(limit),
+      orderBy:  { createdAt: 'desc' },
+      include:  { items: { include: { product: true } } },
     }),
     prisma.order.count({ where }),
   ]);
 
-  const ordersWithParsedHistory = orders.map(order => ({
-    ...order,
-    statusHistory: order.statusHistory ? JSON.parse(order.statusHistory) : []
-  }));
-
-  console.log(`📦 Fetched ${orders.length} orders (total: ${total}) for context: ${where.businessId || 'all'}`);
-
   res.json({
     success: true,
-    orders: ordersWithParsedHistory,
-    pagination: {
-      total,
-      page: Number(page),
-      limit: Number(limit),
-      totalPages: Math.ceil(total / limit),
-    },
+    orders: orders.map(o => ({ ...o, statusHistory: o.statusHistory ? JSON.parse(o.statusHistory) : [] })),
+    pagination: { total, page: Number(page), limit: Number(limit), totalPages: Math.ceil(total / limit) },
   });
 }
 
 // ============================================================================
-// GET ORDER BY ID - WITH TENANT SECURITY
+// GET ORDER BY ID
 // ============================================================================
 async function getOrderById(req, res) {
   const order = await prisma.order.findUnique({
     where: { id: Number(req.params.id) },
-    include: {
-      items: { include: { product: true } },
-    },
+    include: { items: { include: { product: true } } },
   });
 
-  if (!order) {
-    throw new Error('Order not found');
-  }
+  if (!order) throw new Error('Order not found');
 
-  // 🔥 TENANT SECURITY CHECK
   const resolvedBiz = resolveBusinessId(req);
   if (req.user.role !== 'super-admin' && order.businessId !== resolvedBiz) {
-    return res.status(403).json({
-      success: false,
-      error: 'You cannot view orders from another business'
-    });
+    return res.status(403).json({ success: false, error: 'You cannot view orders from another business' });
   }
 
   res.json({
     success: true,
-    order: {
-      ...order,
-      statusHistory: order.statusHistory ? JSON.parse(order.statusHistory) : []
-    }
+    order: { ...order, statusHistory: order.statusHistory ? JSON.parse(order.statusHistory) : [] },
   });
 }
 
 // ============================================================================
-// TRACK ORDER (Public) - WITH BUSINESS CONTEXT
+// TRACK ORDER (Public)
 // ============================================================================
 async function trackOrder(req, res) {
   const { orderId } = req.params;
-  const { phone } = req.query;
+  const { phone }   = req.query;
 
-  if (!phone) {
-    throw new Error('Phone number required');
-  }
+  if (!phone) throw new Error('Phone number required');
 
-  const normalizedPhone = normalizePhone(phone);
-
-  // 🔥 BUSINESS CONTEXT - Get from subdomain or allow all for tracking
-  const businessId = req.businessId;
-
-  console.log('🔍 Tracking order:', orderId, 'for phone:', normalizedPhone);
-
-  const where = {
-    id: Number(orderId),
-    phone: normalizedPhone,
-  };
-
-  // If business context available, scope to that business
-  if (businessId) {
-    where.businessId = businessId;
-  }
+  const where = { id: Number(orderId), phone: normalizePhone(phone) };
+  if (req.businessId) where.businessId = req.businessId;
 
   const order = await prisma.order.findFirst({
     where,
-    include: {
-      items: { include: { product: { select: { name: true, imageUrl: true } } } },
-    },
+    include: { items: { include: { product: { select: { name: true, imageUrl: true } } } } },
   });
 
-  if (!order) {
-    throw new Error('Order not found');
-  }
+  if (!order) throw new Error('Order not found');
 
   res.json({
     success: true,
-    order: {
-      ...order,
-      statusHistory: order.statusHistory ? JSON.parse(order.statusHistory) : [],
-    },
+    order: { ...order, statusHistory: order.statusHistory ? JSON.parse(order.statusHistory) : [] },
   });
 }
 
 // ============================================================================
-// DELETE ORDER - WITH TENANT SECURITY
+// DELETE ORDER
 // ============================================================================
 async function deleteOrder(req, res) {
   const order = await prisma.order.findUnique({
@@ -433,44 +294,26 @@ async function deleteOrder(req, res) {
     include: { items: true },
   });
 
-  if (!order) {
-    throw new Error('Order not found');
-  }
+  if (!order) throw new Error('Order not found');
 
-  // 🔥 TENANT SECURITY CHECK
   const resolvedBiz = resolveBusinessId(req);
   if (req.user.role !== 'super-admin' && order.businessId !== resolvedBiz) {
-    return res.status(403).json({
-      success: false,
-      error: 'You cannot delete orders from another business'
-    });
+    return res.status(403).json({ success: false, error: 'You cannot delete orders from another business' });
   }
 
-  // Restore stock if payment was pending
   if (order.paymentStatus === 'PENDING') {
     for (const item of order.items) {
       await prisma.product.update({
         where: { id: item.productId },
-        data: { stock: { increment: item.quantity } },
+        data:  { stock: { increment: item.quantity } },
       });
     }
   }
 
-  await prisma.order.delete({
-    where: { id: Number(req.params.id) },
-  });
+  await prisma.order.delete({ where: { id: Number(req.params.id) } });
 
   console.log('🗑️ Order deleted:', req.params.id);
-
   res.json({ success: true, message: 'Order deleted' });
 }
 
-module.exports = {
-  checkout,
-  getAllOrders,
-  getOrderById,
-  confirmPayment,
-  updateOrderStatus,
-  trackOrder,
-  deleteOrder,
-};
+module.exports = { checkout, getAllOrders, getOrderById, confirmPayment, updateOrderStatus, trackOrder, deleteOrder };

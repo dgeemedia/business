@@ -1,7 +1,4 @@
 // frontend/src/App.jsx
-// ✅ REMOVED: Staff route (Staff.jsx is deprecated — merged into Users.jsx)
-// ✅ ADDED:   Subscription route for business dashboard
-// Everything else unchanged
 
 import React from 'react';
 import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom';

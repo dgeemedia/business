@@ -1,6 +1,7 @@
 // backend/src/controllers/userController.js
 const bcrypt = require('bcrypt');
 const prisma = require('../lib/prisma');
+const notify = require('../lib/notify');
 
 function resolveBusinessId(req) {
   return req.businessId || req.user?.businessId || null;
@@ -22,23 +23,15 @@ async function getAllUsers(req, res) {
   const users = await prisma.user.findMany({
     where,
     select: {
-      id: true,
-      email: true,
-      role: true,
-      businessId: true,
-      firstName: true,
-      lastName: true,
-      phone: true,
-      active: true,
-      createdAt: true,
+      id: true, email: true, role: true, businessId: true,
+      firstName: true, lastName: true, phone: true, active: true, createdAt: true,
     },
     orderBy: { createdAt: 'desc' },
   });
 
-  // Normalize for frontend: expose `name` and `isActive`
   const normalized = users.map(u => ({
     ...u,
-    name: [u.firstName, u.lastName].filter(Boolean).join(' ') || '',
+    name:     [u.firstName, u.lastName].filter(Boolean).join(' ') || '',
     isActive: u.active,
   }));
 
@@ -59,7 +52,6 @@ async function createUser(req, res) {
     return res.status(403).json({ ok: false, error: 'Staff cannot create users' });
   }
 
-  // Split `name` into firstName/lastName if provided as a single field
   let first = firstName || '';
   let last  = lastName  || '';
   if (name && !firstName && !lastName) {
@@ -93,8 +85,7 @@ async function createUser(req, res) {
 
   const user = await prisma.user.create({
     data: {
-      email,
-      passwordHash,
+      email, passwordHash,
       role:       role || 'staff',
       businessId: assignedBusinessId,
       firstName:  first,
@@ -108,6 +99,11 @@ async function createUser(req, res) {
     },
   });
 
+  // Notify the business that a new team member was added
+  if (assignedBusinessId) {
+    await notify.userCreated(assignedBusinessId, email, role || 'staff');
+  }
+
   console.log(`✅ User created: ${user.email} (${user.role}) by ${req.user.email}`);
   res.status(201).json({ ok: true, user });
 }
@@ -118,18 +114,9 @@ async function createUser(req, res) {
 async function updateUser(req, res) {
   const userId = Number(req.params.id);
 
-  // Destructure ALL known frontend fields so nothing bleeds into updateData raw
   const {
-    password,
-    name,
-    firstName,
-    lastName,
-    email,       // email changes are intentionally ignored for safety
-    role,
-    active,
-    isActive,    // frontend might send isActive instead of active
-    phone,
-    ...rest      // anything else (unknown keys — discarded below)
+    password, name, firstName, lastName,
+    email, role, active, isActive, phone,
   } = req.body;
 
   const targetUser = await prisma.user.findUnique({ where: { id: userId } });
@@ -137,7 +124,6 @@ async function updateUser(req, res) {
     return res.status(404).json({ ok: false, error: 'User not found' });
   }
 
-  // Tenant check
   if (req.user.role !== 'super-admin' && targetUser.businessId !== req.user.businessId) {
     return res.status(403).json({ ok: false, error: 'You cannot manage users from another business' });
   }
@@ -148,10 +134,8 @@ async function updateUser(req, res) {
     return res.status(403).json({ ok: false, error: 'Admin cannot promote to super-admin' });
   }
 
-  // Build a clean updateData with only valid Prisma fields
   const updateData = {};
 
-  // Handle name → firstName / lastName split
   if (name && !firstName && !lastName) {
     const parts = name.trim().split(/\s+/);
     updateData.firstName = parts[0] || '';
@@ -161,14 +145,12 @@ async function updateUser(req, res) {
     if (lastName  !== undefined) updateData.lastName  = lastName;
   }
 
-  if (phone  !== undefined) updateData.phone  = phone;
-  if (role   !== undefined) updateData.role   = role;
+  if (phone !== undefined) updateData.phone = phone;
+  if (role  !== undefined) updateData.role  = role;
 
-  // Support both `active` and `isActive` from frontend
   const activeVal = active !== undefined ? active : isActive;
   if (activeVal !== undefined) updateData.active = Boolean(activeVal);
 
-  // Hash password only if provided and non-empty
   if (password && password.trim().length > 0) {
     if (password.length < 8) {
       return res.status(400).json({ ok: false, error: 'Password must be at least 8 characters' });
@@ -176,7 +158,6 @@ async function updateUser(req, res) {
     updateData.passwordHash = await bcrypt.hash(password, 12);
   }
 
-  // Safety: if nothing to update, return current user
   if (Object.keys(updateData).length === 0) {
     return res.json({ ok: true, user: targetUser });
   }
@@ -225,6 +206,15 @@ async function suspendUser(req, res) {
     select: { id: true, email: true, role: true, businessId: true, firstName: true, lastName: true, active: true },
   });
 
+  // Notify the business that a user was suspended
+  if (targetUser.businessId) {
+    await notify.system(
+      targetUser.businessId,
+      '⚠️ Team Member Suspended',
+      `${targetUser.email} has been suspended by ${req.user.email}.`
+    );
+  }
+
   console.log(`⚠️ User suspended: ${user.email} by ${req.user.email}`);
   res.json({ ok: true, message: 'User suspended', user });
 }
@@ -250,12 +240,21 @@ async function reactivateUser(req, res) {
     select: { id: true, email: true, role: true, businessId: true, firstName: true, lastName: true, active: true },
   });
 
+  // Notify the business that a user was reactivated
+  if (targetUser.businessId) {
+    await notify.system(
+      targetUser.businessId,
+      '✅ Team Member Reactivated',
+      `${targetUser.email} has been reactivated and can now access the dashboard.`
+    );
+  }
+
   console.log(`✅ User reactivated: ${user.email} by ${req.user.email}`);
   res.json({ ok: true, message: 'User reactivated', user });
 }
 
 // ============================================================================
-// TOGGLE (legacy endpoint — kept for backwards compat)
+// TOGGLE (legacy — backwards compat)
 // ============================================================================
 async function toggleUserStatus(req, res) {
   const userId = Number(req.params.id);
@@ -310,11 +309,6 @@ async function deleteUser(req, res) {
 }
 
 module.exports = {
-  getAllUsers,
-  createUser,
-  updateUser,
-  suspendUser,
-  reactivateUser,
-  toggleUserStatus,
-  deleteUser,
+  getAllUsers, createUser, updateUser,
+  suspendUser, reactivateUser, toggleUserStatus, deleteUser,
 };

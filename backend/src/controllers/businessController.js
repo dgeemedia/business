@@ -1,8 +1,7 @@
 // backend/src/controllers/businessController.js
-// Full updated file — getPublicBusiness + getPublicBusinessProducts fixed
-
 const prisma = require('../lib/prisma');
 const bcrypt = require('bcrypt');
+const notify = require('../lib/notify');
 
 // ============================================================================
 // HELPERS
@@ -29,11 +28,6 @@ function calculateExpiryDate(startDate, plan) {
 
 // ============================================================================
 // PUBLIC STOREFRONT: GET BUSINESS
-// GET /api/business/public/:slug  — no auth required
-//
-// ✅ Returns { business } shaped to match what BusinessStorefront.jsx expects:
-//    - business.name  (aliased from businessName)
-//    - business.taxRate / deliveryFee / businessHours  (safe defaults if missing)
 // ============================================================================
 async function getPublicBusiness(req, res) {
   const { slug } = req.params;
@@ -41,56 +35,30 @@ async function getPublicBusiness(req, res) {
   const business = await prisma.business.findUnique({
     where: { slug },
     select: {
-      id:             true,
-      slug:           true,
-      businessName:   true,
-      description:    true,
-      phone:          true,
-      whatsappNumber: true,
-      email:          true,
-      address:        true,
-      logo:           true,
-      primaryColor:   true,
-      secondaryColor: true,
-      currency:       true,
-      businessType:   true,
-      isActive:       true,
-      facebookUrl:    true,
-      instagramUrl:   true,
-      twitterUrl:     true,
-      youtubeUrl:     true,
-      footerText:     true,
-      footerCopyright:true,
-      taxRate:        true, 
-      deliveryFee:    true, 
-      businessHours:  true,
+      id: true, slug: true, businessName: true, description: true,
+      phone: true, whatsappNumber: true, email: true, address: true,
+      logo: true, primaryColor: true, secondaryColor: true, currency: true,
+      businessType: true, isActive: true, facebookUrl: true, instagramUrl: true,
+      twitterUrl: true, youtubeUrl: true, footerText: true, footerCopyright: true,
+      taxRate: true, deliveryFee: true, businessHours: true,
     },
   });
 
-  if (!business) {
-    return res.status(404).json({ error: 'Business not found' });
-  }
+  if (!business) return res.status(404).json({ error: 'Business not found' });
 
   if (!business.isActive) {
-    return res.status(503).json({
-      error: 'Business is currently unavailable',
-      maintenanceMode: true,
-    });
+    return res.status(503).json({ error: 'Business is currently unavailable', maintenanceMode: true });
   }
 
-  // Destructure businessName and alias it to `name` so the storefront
-  // doesn't need to change — it reads business.name everywhere.
   const { businessName, ...rest } = business;
-
   return res.json({
     business: {
       ...rest,
-      name:         businessName,   // ← what BusinessStorefront uses
-      businessName,                 // ← keep original too
-      // Safe defaults for optional fields not yet in schema
-      taxRate:      rest.taxRate      ?? 0,
-      deliveryFee:  rest.deliveryFee  ?? 0,
-      businessHours:rest.businessHours ?? null,
+      name: businessName,
+      businessName,
+      taxRate:       rest.taxRate       ?? 0,
+      deliveryFee:   rest.deliveryFee   ?? 0,
+      businessHours: rest.businessHours ?? null,
     },
   });
 }
@@ -98,43 +66,27 @@ async function getPublicBusiness(req, res) {
 async function getPublicBusinessProducts(req, res) {
   const { slug } = req.params;
 
-  // Resolve business by slug
   const business = await prisma.business.findUnique({
     where: { slug },
     select: { id: true, isActive: true },
   });
 
-  if (!business) {
-    return res.status(404).json({ error: 'Business not found' });
-  }
+  if (!business) return res.status(404).json({ error: 'Business not found' });
+  if (!business.isActive) return res.status(503).json({ error: 'Business is currently unavailable' });
 
-  if (!business.isActive) {
-    return res.status(503).json({ error: 'Business is currently unavailable' });
-  }
-
-  // Fetch products with their ratings so we can compute averageRating
   const rawProducts = await prisma.product.findMany({
-    where: {
-      businessId: business.id,
-      isAvailable: true,
-    },
-    include: {
-      ratings: {        // ProductRating[]
-        select: { rating: true },
-      },
-    },
+    where: { businessId: business.id, isAvailable: true },
+    include: { ratings: { select: { rating: true } } },
     orderBy: { createdAt: 'desc' },
   });
 
-  // Compute averageRating and strip the raw ratings array from the response
   const products = rawProducts.map(({ ratings, ...product }) => ({
     ...product,
     averageRating: ratings.length > 0
       ? Math.round((ratings.reduce((sum, r) => sum + r.rating, 0) / ratings.length) * 10) / 10
       : 0,
-    // Safe default for optional fields not yet in schema
-    isAvailable:  product.isAvailable  ?? true,
-    category:     product.category     ?? null,
+    isAvailable: product.isAvailable ?? true,
+    category:    product.category    ?? null,
   }));
 
   return res.json({ products });
@@ -160,9 +112,7 @@ async function getAllBusinesses(req, res) {
 
   const businesses = await prisma.business.findMany({
     orderBy: { createdAt: 'desc' },
-    include: {
-      _count: { select: { users: true, products: true, orders: true } },
-    },
+    include: { _count: { select: { users: true, products: true, orders: true } } },
   });
 
   res.json({ businesses });
@@ -180,9 +130,7 @@ async function getBusiness(req, res) {
 
   const business = await prisma.business.findUnique({
     where: { id: businessId },
-    include: {
-      _count: { select: { users: true, products: true, orders: true } },
-    },
+    include: { _count: { select: { users: true, products: true, orders: true } } },
   });
 
   if (!business) return res.status(404).json({ error: 'Business not found' });
@@ -208,9 +156,8 @@ async function createBusiness(req, res) {
     startWithTrial = true, subscriptionPlan, subscriptionExpiry,
   } = req.body;
 
-  if (!slug || !businessName || !phone || !whatsappNumber) {
+  if (!slug || !businessName || !phone || !whatsappNumber)
     return res.status(400).json({ error: 'slug, businessName, phone, and whatsappNumber are required' });
-  }
   if (!adminEmail)     return res.status(400).json({ error: 'adminEmail is required' });
   if (!adminFirstName) return res.status(400).json({ error: 'adminFirstName is required' });
 
@@ -253,8 +200,7 @@ async function createBusiness(req, res) {
   }
 
   const businessData = {
-    slug, businessName, phone, whatsappNumber,
-    ...subscriptionData,
+    slug, businessName, phone, whatsappNumber, ...subscriptionData,
     ...(businessType    && { businessType }),
     ...(businessMotto   && { businessMotto }),
     ...(email           && { email }),
@@ -311,18 +257,21 @@ async function createBusiness(req, res) {
     return res.status(500).json({ error: 'Failed to create business', details: error.message });
   }
 
+  // ── Notifications (non-blocking) ─────────────────────────────────────────
   try {
-    await prisma.notification.create({
-      data: {
-        type:       'system',
-        title:      'Welcome to the Platform!',
-        message:    subscriptionData.subscriptionPlan === 'free_trial'
-          ? 'Your 14-day free trial has started. Enjoy exploring all features!'
-          : 'Your business account has been created successfully.',
-        businessId: business.id,
-        read:       false,
-      },
-    });
+    // Welcome message for the new business
+    await notify.system(
+      business.id,
+      '🎉 Welcome to the Platform!',
+      subscriptionData.subscriptionPlan === 'free_trial'
+        ? 'Your 14-day free trial has started. Enjoy exploring all features!'
+        : 'Your business account has been created successfully.'
+    );
+
+    // Separate trial notification so the countdown timer gets created
+    if (subscriptionData.subscriptionPlan === 'free_trial') {
+      await notify.trialStarted(business.id, subscriptionData.trialEndsAt);
+    }
   } catch (notifError) {
     console.warn('⚠️  Could not create welcome notification:', notifError.message);
   }
@@ -426,30 +375,40 @@ async function toggleBusinessStatus(req, res) {
     ? Boolean(req.body.isActive)
     : !business.isActive;
 
+  const suspensionReason = req.body.suspensionReason || 'Suspended by admin';
+
   const updated = await prisma.business.update({
     where: { id: businessId },
     data: {
       isActive:         newActive,
       suspendedAt:      newActive ? null : new Date(),
-      suspensionReason: newActive ? null : (req.body.suspensionReason || 'Suspended by admin'),
+      suspensionReason: newActive ? null : suspensionReason,
     },
   });
 
-  const action = newActive ? 'Reactivated' : 'Suspended';
-  res.json({ ok: true, message: `Business ${action.toLowerCase()} successfully`, business: updated });
+  // Notify the business of suspension or reactivation
+  if (!newActive) {
+    await notify.businessSuspended(businessId, suspensionReason);
+  } else {
+    await notify.system(
+      businessId,
+      '✅ Business Reactivated',
+      'Your business account has been reactivated. You can now accept orders again.'
+    );
+  }
+
+  const action = newActive ? 'reactivated' : 'suspended';
+  console.log(`${newActive ? '✅' : '⏸️'} Business ${action}: ${business.businessName}`);
+  res.json({ ok: true, message: `Business ${action} successfully`, business: updated });
 }
 
-// ─────────────────────────────────────────────────────────────────────────────
+// ============================================================================
 // GET PUBLIC PRODUCTS (storefront)
-// GET /api/business/public/:slug/products
-//
-// ✅ KEY FIX: include images relation so ProductImageSlideshow has data to cycle
-// ─────────────────────────────────────────────────────────────────────────────
+// ============================================================================
 async function getPublicProducts(req, res) {
   const { slug } = req.params;
   const { category, search } = req.query;
 
-  // Resolve business
   const business = await prisma.business.findUnique({
     where: { slug },
     select: { id: true, isActive: true },
@@ -461,95 +420,59 @@ async function getPublicProducts(req, res) {
 
   const where = {
     businessId: business.id,
-    isAvailable: true,           // only show available products on storefront
-    stock: { gt: 0 },            // only show in-stock items
+    isAvailable: true,
+    stock: { gt: 0 },
   };
 
-  if (category && category !== 'all') {
-    where.category = category;
-  }
+  if (category && category !== 'all') where.category = category;
 
   if (search) {
     where.OR = [
-      { name: { contains: search, mode: 'insensitive' } },
+      { name:        { contains: search, mode: 'insensitive' } },
       { description: { contains: search, mode: 'insensitive' } },
     ];
   }
 
   const products = await prisma.product.findMany({
     where,
-    orderBy: [
-      { featured: 'desc' },      // featured products first
-      { createdAt: 'desc' },
-    ],
+    orderBy: [{ featured: 'desc' }, { createdAt: 'desc' }],
     include: {
-      // ✅ CRITICAL: include the images[] relation — without this, slideshow has no data
-      images: {
-        orderBy: { order: 'asc' },
-      },
-      ratings: {
-        select: { rating: true },
-      },
+      images:  { orderBy: { order: 'asc' } },
+      ratings: { select: { rating: true } },
     },
   });
 
   const productsWithRatings = products.map(product => {
-    const ratings = product.ratings || [];
+    const ratings      = product.ratings || [];
     const totalRatings = ratings.length;
     const averageRating = totalRatings > 0
       ? ratings.reduce((sum, r) => sum + r.rating, 0) / totalRatings
       : 0;
-
     const { ratings: _, ...productData } = product;
-
-    return {
-      ...productData,
-      averageRating: Math.round(averageRating * 10) / 10,
-      totalRatings,
-    };
+    return { ...productData, averageRating: Math.round(averageRating * 10) / 10, totalRatings };
   });
 
   console.log(`🛍️ Public products for ${slug}: ${productsWithRatings.length} items`);
   res.json({ products: productsWithRatings });
 }
 
-// ─────────────────────────────────────────────────────────────────────────────
+// ============================================================================
 // GET ALL PUBLIC BUSINESSES (landing page directory)
-// GET /api/business/public/all
-// ─────────────────────────────────────────────────────────────────────────────
+// ============================================================================
 async function getAllPublicBusinesses(req, res) {
   const businesses = await prisma.business.findMany({
     where: { isActive: true },
-    select: {
-      slug: true,
-      businessName: true,
-      businessType: true,
-      description: true,
-      logo: true,
-      primaryColor: true,
-    },
+    select: { slug: true, businessName: true, businessType: true, description: true, logo: true, primaryColor: true },
     orderBy: { createdAt: 'desc' },
   });
 
-  const formatted = businesses.map(({ businessName, ...rest }) => ({
-    ...rest,
-    name: businessName,
-  }));
-
+  const formatted = businesses.map(({ businessName, ...rest }) => ({ ...rest, name: businessName }));
   res.json({ businesses: formatted });
 }
 
 module.exports = {
-  getPublicBusiness,
-  getPublicProducts,
-  getAllPublicBusinesses,
-  getPublicBusinessProducts,
-  getBusinessBySlug,
-  getAllBusinesses,
-  getBusiness,
-  createBusiness,
-  updateBusiness,
-  deleteBusiness,
-  getCurrentBusiness,
-  toggleBusinessStatus,
+  getPublicBusiness, getPublicProducts, getAllPublicBusinesses,
+  getPublicBusinessProducts, getBusinessBySlug, getAllBusinesses,
+  getBusiness, createBusiness, updateBusiness, deleteBusiness,
+  getCurrentBusiness, toggleBusinessStatus,
 };

@@ -1,5 +1,8 @@
 // backend/src/controllers/productController.js
 const prisma = require('../lib/prisma');
+const notify = require('../lib/notify');
+
+const LOW_STOCK_THRESHOLD = 5;
 
 function resolveBusinessId(req) {
   return req.businessId || req.user?.businessId || null;
@@ -10,12 +13,10 @@ function resolveBusinessId(req) {
 // ============================================================================
 async function getAllProducts(req, res) {
   const businessId = resolveBusinessId(req);
-  if (!businessId) {
-    return res.status(400).json({ error: 'Business context required' });
-  }
+  if (!businessId) return res.status(400).json({ error: 'Business context required' });
 
   const products = await prisma.product.findMany({
-    where: { businessId },
+    where:   { businessId },
     orderBy: { createdAt: 'desc' },
     include: {
       ratings: { select: { rating: true } },
@@ -29,11 +30,7 @@ async function getAllProducts(req, res) {
     const averageRating = totalRatings > 0
       ? ratings.reduce((sum, r) => sum + r.rating, 0) / totalRatings : 0;
     const { ratings: _, ...productData } = product;
-    return {
-      ...productData,
-      averageRating: Math.round(averageRating * 10) / 10,
-      totalRatings,
-    };
+    return { ...productData, averageRating: Math.round(averageRating * 10) / 10, totalRatings };
   });
 
   res.json({ products: productsWithRatings });
@@ -44,15 +41,11 @@ async function getAllProducts(req, res) {
 // ============================================================================
 async function getProductById(req, res) {
   const businessId = resolveBusinessId(req);
-  const product = await prisma.product.findFirst({
+  const product    = await prisma.product.findFirst({
     where: { id: Number(req.params.id), businessId },
     include: {
-      ratings: {
-        select:  { rating: true, comment: true, createdAt: true, phone: true },
-        orderBy: { createdAt: 'desc' },
-        take: 10,
-      },
-      images: { orderBy: { order: 'asc' } },
+      ratings: { select: { rating: true, comment: true, createdAt: true, phone: true }, orderBy: { createdAt: 'desc' }, take: 10 },
+      images:  { orderBy: { order: 'asc' } },
     },
   });
 
@@ -83,14 +76,9 @@ async function getProductById(req, res) {
 async function createProduct(req, res) {
   const { name, price, stock, description, imageUrl, images } = req.body;
 
-  if (!name || !price || stock === undefined) {
-    throw new Error('Name, price, and stock are required');
-  }
+  if (!name || !price || stock === undefined) throw new Error('Name, price, and stock are required');
 
-  let businessId = req.body.businessId
-    ? Number(req.body.businessId)
-    : resolveBusinessId(req);
-
+  let businessId = req.body.businessId ? Number(req.body.businessId) : resolveBusinessId(req);
   if (!businessId) throw new Error('Business ID is required');
 
   const product = await prisma.product.create({
@@ -99,7 +87,7 @@ async function createProduct(req, res) {
       price:       Number(price),
       stock:       Number(stock),
       description: description?.trim() || '',
-      imageUrl:    imageUrl?.trim() || '',
+      imageUrl:    imageUrl?.trim()    || '',
       businessId,
       images: images && images.length > 0 ? {
         create: images.map((img, index) => ({
@@ -111,6 +99,11 @@ async function createProduct(req, res) {
     },
     include: { images: true },
   });
+
+  // Warn immediately if created with low stock
+  if (Number(stock) <= LOW_STOCK_THRESHOLD && Number(stock) > 0) {
+    await notify.lowStock(businessId, product.id, product.name, Number(stock));
+  }
 
   res.status(201).json(product);
 }
@@ -130,14 +123,16 @@ async function updateProduct(req, res) {
     return res.status(403).json({ error: 'You cannot manage products from another business' });
   }
 
+  const newStock = updateData.stock !== undefined ? Number(updateData.stock) : existingProduct.stock;
+
   await prisma.product.update({
     where: { id: productId },
     data: {
       name:        updateData.name,
       price:       Number(updateData.price),
-      stock:       Number(updateData.stock),
+      stock:       newStock,
       description: updateData.description || '',
-      imageUrl:    updateData.imageUrl || '',
+      imageUrl:    updateData.imageUrl    || '',
     },
   });
 
@@ -156,16 +151,21 @@ async function updateProduct(req, res) {
   }
 
   const updatedProduct = await prisma.product.findUnique({
-    where: { id: productId },
+    where:   { id: productId },
     include: { images: { orderBy: { order: 'asc' } } },
   });
+
+  // Low stock warning if stock dropped below threshold
+  const previousStock = existingProduct.stock;
+  if (newStock <= LOW_STOCK_THRESHOLD && newStock > 0 && (previousStock > LOW_STOCK_THRESHOLD || previousStock === newStock)) {
+    await notify.lowStock(existingProduct.businessId, productId, updatedProduct.name, newStock);
+  }
 
   res.json(updatedProduct);
 }
 
 // ============================================================================
 // DELETE PRODUCT
-// ✅ FIX: OrderItem has no CASCADE on Product — must null-out or delete items first
 // ============================================================================
 async function deleteProduct(req, res) {
   const productId = Number(req.params.id);
@@ -178,24 +178,10 @@ async function deleteProduct(req, res) {
     return res.status(403).json({ error: 'You cannot manage products from another business' });
   }
 
-  // Delete in correct dependency order to avoid FK violations:
-  // 1. ProductImage records
-  // 2. ProductRating records
-  // 3. OrderItem records (preserve the order history but unlink the product)
-  //    — we set productId to null if your schema allows, otherwise delete them
   await prisma.$transaction(async (tx) => {
-    // Remove images
     await tx.productImage.deleteMany({ where: { productId } });
-
-    // Remove ratings
     await tx.productRating.deleteMany({ where: { productId } });
-
-    // For order items: delete them (order history will show "deleted product")
-    // If you want to keep order history intact, add `productId Int?` (nullable)
-    // to OrderItem in your schema instead — but for now, delete is safest.
     await tx.orderItem.deleteMany({ where: { productId } });
-
-    // Now safe to delete the product
     await tx.product.delete({ where: { id: productId } });
   });
 
@@ -205,7 +191,6 @@ async function deleteProduct(req, res) {
 
 // ============================================================================
 // TOGGLE AVAILABILITY
-// ✅ NEW: was missing entirely — Products.jsx calls PATCH /api/products/:id/toggle
 // ============================================================================
 async function toggleAvailability(req, res) {
   const productId = Number(req.params.id);
@@ -220,7 +205,7 @@ async function toggleAvailability(req, res) {
 
   const updated = await prisma.product.update({
     where: { id: productId },
-    data: { isAvailable: !existingProduct.isAvailable },
+    data:  { isAvailable: !existingProduct.isAvailable },
   });
 
   console.log(`👁️ Product ${productId} availability set to ${updated.isAvailable}`);
@@ -249,12 +234,7 @@ async function addProductImage(req, res) {
   });
 
   const image = await prisma.productImage.create({
-    data: {
-      productId: Number(productId),
-      imageUrl,
-      order:     (maxOrder?.order ?? 0) + 1,
-      isPrimary: isPrimary || false,
-    },
+    data: { productId: Number(productId), imageUrl, order: (maxOrder?.order ?? 0) + 1, isPrimary: isPrimary || false },
   });
 
   res.json(image);
@@ -303,13 +283,6 @@ async function reorderProductImages(req, res) {
 }
 
 module.exports = {
-  getAllProducts,
-  getProductById,
-  createProduct,
-  updateProduct,
-  deleteProduct,
-  toggleAvailability,
-  addProductImage,
-  deleteProductImage,
-  reorderProductImages,
+  getAllProducts, getProductById, createProduct, updateProduct, deleteProduct,
+  toggleAvailability, addProductImage, deleteProductImage, reorderProductImages,
 };

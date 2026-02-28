@@ -1,29 +1,17 @@
 // frontend/src/components/layouts/DashboardLayout.jsx
-// ✅ CHANGED: Removed "Staff" nav item (merged into Users.jsx)
-// ✅ ADDED:   "Subscription" nav item with expiry warning indicator
 
 import React, { useState, useEffect } from 'react';
 import { Outlet, NavLink, useNavigate } from 'react-router-dom';
 import {
-  LayoutDashboard,
-  Package,
-  ShoppingCart,
-  Users,
-  Settings,
-  Bell,
-  LogOut,
-  Menu,
-  X,
-  Building2,
-  ChevronDown,
-  Star,
-  CreditCard,
-  AlertCircle
+  LayoutDashboard, Package, ShoppingCart, Users, Settings,
+  LogOut, Menu, X, Building2, ChevronDown, Star, CreditCard, AlertCircle
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
 import useAuthStore from '../../stores/authStore';
 import useBusinessStore from '../../stores/businessStore';
 import { getInitials, daysUntil } from '../../utils/helpers';
+import { useNotifications } from '../../hooks/useNotifications';
+import { NotificationBell, NotificationPanel } from '../shared/NotificationPanel';
 
 const DashboardLayout = () => {
   const navigate = useNavigate();
@@ -33,22 +21,25 @@ const DashboardLayout = () => {
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
   const [userMenuOpen, setUserMenuOpen] = useState(false);
 
-  useEffect(() => {
-    fetchCurrentBusiness();
-  }, [fetchCurrentBusiness]);
+  const {
+    notifications, unreadCount, loading: notifLoading,
+    panelOpen, openPanel, closePanel,
+    markAsRead, markAllAsRead, refresh,
+  } = useNotifications();
 
-  // Compute subscription urgency for badge
+  useEffect(() => { fetchCurrentBusiness(); }, [fetchCurrentBusiness]);
+
   const subExpiry = currentBusiness?.subscriptionExpiry || currentBusiness?.trialEndsAt;
   const subDays   = subExpiry ? daysUntil(subExpiry) : null;
   const subUrgent = subDays !== null && subDays <= 7;
 
   const navItems = [
-    { name: 'Dashboard',     path: '/dashboard',              icon: LayoutDashboard },
-    { name: 'Products',      path: '/dashboard/products',     icon: Package         },
-    { name: 'Orders',        path: '/dashboard/orders',       icon: ShoppingCart    },
-    { name: 'Users & Team',  path: '/dashboard/users',        icon: Users           },
-    { name: 'Reviews',       path: '/dashboard/reviews',      icon: Star            },
-    { name: 'Settings',      path: '/dashboard/settings',     icon: Settings        },
+    { name: 'Dashboard',    path: '/dashboard',               icon: LayoutDashboard },
+    { name: 'Products',     path: '/dashboard/products',      icon: Package         },
+    { name: 'Orders',       path: '/dashboard/orders',        icon: ShoppingCart    },
+    { name: 'Users & Team', path: '/dashboard/users',         icon: Users           },
+    { name: 'Reviews',      path: '/dashboard/reviews',       icon: Star            },
+    { name: 'Settings',     path: '/dashboard/settings',      icon: Settings        },
     {
       name: 'Subscription',
       path: '/dashboard/subscription',
@@ -58,10 +49,7 @@ const DashboardLayout = () => {
     },
   ];
 
-  const handleLogout = () => {
-    logout();
-    navigate('/login');
-  };
+  const handleLogout = () => { logout(); navigate('/login'); };
 
   const NavItem = ({ item, onClick }) => (
     <NavLink
@@ -70,9 +58,7 @@ const DashboardLayout = () => {
       onClick={onClick}
       className={({ isActive }) =>
         `flex items-center gap-3 px-4 py-3 rounded-lg transition-all relative ${
-          isActive
-            ? 'bg-primary-50 text-primary-700 font-medium'
-            : 'text-gray-700 hover:bg-gray-50'
+          isActive ? 'bg-primary-50 text-primary-700 font-medium' : 'text-gray-700 hover:bg-gray-50'
         }`
       }
     >
@@ -81,19 +67,14 @@ const DashboardLayout = () => {
         <>
           <span className="flex-1">{item.name}</span>
           {item.badge && (
-            <span
-              className={`text-xs font-bold px-1.5 py-0.5 rounded-full ${
-                item.badgeVariant === 'red'
-                  ? 'bg-red-100 text-red-600'
-                  : 'bg-orange-100 text-orange-600'
-              }`}
-            >
+            <span className={`text-xs font-bold px-1.5 py-0.5 rounded-full ${
+              item.badgeVariant === 'red' ? 'bg-red-100 text-red-600' : 'bg-orange-100 text-orange-600'
+            }`}>
               {item.badge}
             </span>
           )}
         </>
       )}
-      {/* Dot indicator when sidebar is collapsed */}
       {!sidebarOpen && item.badge && (
         <span className="absolute top-1 right-1 w-2 h-2 bg-red-500 rounded-full" />
       )}
@@ -102,13 +83,22 @@ const DashboardLayout = () => {
 
   return (
     <div className="min-h-screen bg-gray-50">
+      {/* Notification Panel */}
+      <NotificationPanel
+        open={panelOpen}
+        onClose={closePanel}
+        notifications={notifications}
+        unreadCount={unreadCount}
+        loading={notifLoading}
+        onMarkAsRead={markAsRead}
+        onMarkAllAsRead={markAllAsRead}
+        onRefresh={refresh}
+      />
+
       {/* Mobile Header */}
       <div className="lg:hidden fixed top-0 left-0 right-0 h-16 bg-white border-b border-gray-200 flex items-center justify-between px-4 z-40">
         <div className="flex items-center gap-3">
-          <button
-            onClick={() => setMobileMenuOpen(!mobileMenuOpen)}
-            className="p-2 hover:bg-gray-100 rounded-lg"
-          >
+          <button onClick={() => setMobileMenuOpen(!mobileMenuOpen)} className="p-2 hover:bg-gray-100 rounded-lg">
             {mobileMenuOpen ? <X className="w-6 h-6" /> : <Menu className="w-6 h-6" />}
           </button>
           <div className="flex items-center gap-2">
@@ -118,23 +108,13 @@ const DashboardLayout = () => {
             </span>
           </div>
         </div>
-
-        <button className="p-2 hover:bg-gray-100 rounded-lg relative">
-          <Bell className="w-5 h-5" />
-          {subUrgent && (
-            <span className="absolute top-1 right-1 w-2 h-2 bg-red-500 rounded-full" />
-          )}
-        </button>
+        <NotificationBell unreadCount={unreadCount} onClick={openPanel} dark={false} />
       </div>
 
-      {/* Sidebar - Desktop */}
-      <aside
-        className={`hidden lg:block fixed left-0 top-0 h-full bg-white border-r border-gray-200 transition-all duration-300 z-30 ${
-          sidebarOpen ? 'w-64' : 'w-20'
-        }`}
-      >
+      {/* Desktop Sidebar */}
+      <aside className={`hidden lg:block fixed left-0 top-0 h-full bg-white border-r border-gray-200 transition-all duration-300 z-30 ${sidebarOpen ? 'w-64' : 'w-20'}`}>
         <div className="flex flex-col h-full">
-          {/* Logo */}
+          {/* Logo + Bell */}
           <div className="h-16 flex items-center justify-between px-4 border-b border-gray-200">
             {sidebarOpen ? (
               <div className="flex items-center gap-2 min-w-0">
@@ -150,9 +130,12 @@ const DashboardLayout = () => {
                 <Building2 className="w-5 h-5 text-white" />
               </div>
             )}
+            {sidebarOpen && (
+              <NotificationBell unreadCount={unreadCount} onClick={openPanel} dark={false} />
+            )}
           </div>
 
-          {/* Subscription warning banner */}
+          {/* Subscription warning */}
           {sidebarOpen && subUrgent && (
             <div className={`mx-3 mt-3 p-2.5 rounded-lg text-xs flex items-center gap-2 ${
               subDays <= 0
@@ -160,22 +143,16 @@ const DashboardLayout = () => {
                 : 'bg-orange-50 border border-orange-200 text-orange-700'
             }`}>
               <AlertCircle className="w-4 h-4 flex-shrink-0" />
-              <span>
-                {subDays <= 0
-                  ? 'Subscription expired!'
-                  : `Expires in ${subDays} day${subDays !== 1 ? 's' : ''}`}
-              </span>
+              <span>{subDays <= 0 ? 'Subscription expired!' : `Expires in ${subDays} day${subDays !== 1 ? 's' : ''}`}</span>
             </div>
           )}
 
-          {/* Navigation */}
+          {/* Nav */}
           <nav className="flex-1 p-4 space-y-1 overflow-y-auto">
-            {navItems.map((item) => (
-              <NavItem key={item.path} item={item} />
-            ))}
+            {navItems.map(item => <NavItem key={item.path} item={item} />)}
           </nav>
 
-          {/* User Section */}
+          {/* User */}
           <div className="p-4 border-t border-gray-200">
             <div
               className="flex items-center gap-3 p-3 rounded-lg hover:bg-gray-50 cursor-pointer"
@@ -196,13 +173,10 @@ const DashboardLayout = () => {
                 </>
               )}
             </div>
-
             <AnimatePresence>
               {userMenuOpen && sidebarOpen && (
                 <motion.div
-                  initial={{ opacity: 0, y: -10 }}
-                  animate={{ opacity: 1, y: 0 }}
-                  exit={{ opacity: 0, y: -10 }}
+                  initial={{ opacity: 0, y: -10 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: -10 }}
                   className="mt-2 py-2"
                 >
                   <button
@@ -219,7 +193,7 @@ const DashboardLayout = () => {
 
           {/* Toggle */}
           <button
-            onClick={() => setSidebarOpen(!sidebarOpen)}
+            onClick={() => setSidebarOpen(s => !s)}
             className="p-2 m-4 border border-gray-200 rounded-lg hover:bg-gray-50 hidden lg:block"
           >
             <Menu className="w-5 h-5 mx-auto" />
@@ -232,20 +206,16 @@ const DashboardLayout = () => {
         {mobileMenuOpen && (
           <>
             <motion.div
-              initial={{ opacity: 0 }}
-              animate={{ opacity: 1 }}
-              exit={{ opacity: 0 }}
+              initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}
               onClick={() => setMobileMenuOpen(false)}
               className="lg:hidden fixed inset-0 bg-black/50 z-40"
             />
             <motion.aside
-              initial={{ x: -300 }}
-              animate={{ x: 0 }}
-              exit={{ x: -300 }}
+              initial={{ x: -300 }} animate={{ x: 0 }} exit={{ x: -300 }}
               className="lg:hidden fixed left-0 top-16 bottom-0 w-64 bg-white z-50 overflow-y-auto"
             >
               <nav className="p-4 space-y-1">
-                {navItems.map((item) => (
+                {navItems.map(item => (
                   <NavLink
                     key={item.path}
                     to={item.path}
@@ -253,9 +223,7 @@ const DashboardLayout = () => {
                     onClick={() => setMobileMenuOpen(false)}
                     className={({ isActive }) =>
                       `flex items-center gap-3 px-4 py-3 rounded-lg transition-all ${
-                        isActive
-                          ? 'bg-primary-50 text-primary-700 font-medium'
-                          : 'text-gray-700 hover:bg-gray-50'
+                        isActive ? 'bg-primary-50 text-primary-700 font-medium' : 'text-gray-700 hover:bg-gray-50'
                       }`
                     }
                   >
@@ -263,22 +231,14 @@ const DashboardLayout = () => {
                     <span className="flex-1">{item.name}</span>
                     {item.badge && (
                       <span className={`text-xs font-bold px-1.5 py-0.5 rounded-full ${
-                        item.badgeVariant === 'red'
-                          ? 'bg-red-100 text-red-600'
-                          : 'bg-orange-100 text-orange-600'
-                      }`}>
-                        {item.badge}
-                      </span>
+                        item.badgeVariant === 'red' ? 'bg-red-100 text-red-600' : 'bg-orange-100 text-orange-600'
+                      }`}>{item.badge}</span>
                     )}
                   </NavLink>
                 ))}
               </nav>
-
               <div className="p-4 border-t border-gray-200">
-                <button
-                  onClick={handleLogout}
-                  className="flex items-center gap-3 px-4 py-2 w-full text-left text-red-600 hover:bg-red-50 rounded-lg"
-                >
+                <button onClick={handleLogout} className="flex items-center gap-3 px-4 py-2 w-full text-left text-red-600 hover:bg-red-50 rounded-lg">
                   <LogOut className="w-4 h-4" />
                   <span>Logout</span>
                 </button>
@@ -289,11 +249,7 @@ const DashboardLayout = () => {
       </AnimatePresence>
 
       {/* Main Content */}
-      <main
-        className={`transition-all duration-300 ${
-          sidebarOpen ? 'lg:ml-64' : 'lg:ml-20'
-        } pt-16 lg:pt-0`}
-      >
+      <main className={`transition-all duration-300 ${sidebarOpen ? 'lg:ml-64' : 'lg:ml-20'} pt-16 lg:pt-0`}>
         <div className="p-6 lg:p-8 max-w-7xl mx-auto">
           <Outlet />
         </div>
