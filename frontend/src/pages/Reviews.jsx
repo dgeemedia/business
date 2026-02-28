@@ -1,3 +1,4 @@
+// frontend/src/pages/Reviews.jsx
 import React, { useState, useEffect } from 'react';
 import { Star, Search, Filter } from 'lucide-react';
 import { motion } from 'framer-motion';

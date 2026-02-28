@@ -1,7 +1,4 @@
 // frontend/src/pages/Subscription.jsx
-// ✅ Business-side subscription page
-// ✅ Shows current plan, countdown timer, and renew button with payment
-// ✅ Connects to the same backend endpoints super-admin uses
 
 import React, { useState, useEffect, useCallback } from 'react';
 import {

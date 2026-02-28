@@ -1,38 +1,39 @@
-//
+// frontend/src/services/ratingService.js
 import api from './api';
 
 const ratingService = {
-  // Get ratings for a product
-  getProductRatings: async (productId) => {
-    const response = await api.get(`/api/ratings/product/${productId}`);
+  // ── Public: rate a product (phone-verified) ──────────────────────────────
+  // ratingData = { phone, rating, comment? }
+  submitRating: async (productId, ratingData) => {
+    const response = await api.post(`/api/products/${productId}/ratings`, ratingData);
     return response.data;
   },
 
-  // Submit a rating (public - uses phone number)
-  submitRating: async (ratingData) => {
-    const response = await api.post('/api/ratings', ratingData);
+  // ── Public: get all ratings for a product ────────────────────────────────
+  getProductRatings: async (productId, params = {}) => {
+    const response = await api.get(`/api/products/${productId}/ratings`, { params });
     return response.data;
   },
 
-  // Get average rating for product
-  getProductAverage: async (productId) => {
-    const response = await api.get(`/api/ratings/product/${productId}/average`);
-    return response.data;
-  },
-
-  // Verify if phone number can rate (has purchased)
-  canRate: async (productId, phoneNumber) => {
-    const response = await api.post('/api/ratings/can-rate', {
-      productId,
-      phoneNumber,
+  // ── Public: check whether a phone number can rate a product ─────────────
+  // Returns { canRate, hasRated, rating }
+  canRate: async (productId, phone) => {
+    const response = await api.get(`/api/products/${productId}/can-rate`, {
+      params: { phone },
     });
     return response.data;
   },
 
-  // Get all ratings for business
+  // ── Authenticated dashboard: all ratings for this business ───────────────
   getBusinessRatings: async () => {
     const response = await api.get('/api/ratings');
     return response.data;
+  },
+
+  // ── Backwards-compat alias ────────────────────────────────────────────────
+  getProductAverage: async (productId) => {
+    const data = await ratingService.getProductRatings(productId, { limit: 1 });
+    return { averageRating: data.averageRating, totalRatings: data.totalRatings };
   },
 };
 

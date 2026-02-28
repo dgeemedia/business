@@ -4,11 +4,13 @@ import {
   Search, Store, Moon, Sun, Globe, Star, Zap, Shield,
   Sparkles, ChevronDown, X, Building2, TrendingUp, Award,
   Phone, ShoppingBag, Flame, ExternalLink, Package, CheckCircle,
+  MessageSquare,
 } from 'lucide-react';
 import { motion, AnimatePresence, useMotionValue, useTransform, useSpring } from 'framer-motion';
 import { useNavigate } from 'react-router-dom';
 import toast from 'react-hot-toast';
 import api, { buildSubdomainUrl } from '../../services/api';
+import RatingWidget from '../../components/public/RatingWidget';
 
 /* ─── helpers ───────────────────────────────────────────────────────────────── */
 function hexToRgb(hex = '#10b981') {
@@ -34,16 +36,50 @@ function WaIcon({ size = 20 }) {
   );
 }
 
-/* ─── Premium Business Card (REAL DATA ONLY) ─────────────────────────────────── */
+/* ─── Mini stars (read-only) ─────────────────────────────────────────────────── */
+function MiniStars({ rating, size = 12 }) {
+  return (
+    <span className="inline-flex items-center gap-0.5">
+      {[1,2,3,4,5].map(s => (
+        <Star
+          key={s}
+          style={{
+            width: size, height: size,
+            fill:  s <= Math.round(rating) ? '#FBBF24' : 'transparent',
+            color: s <= Math.round(rating) ? '#FBBF24' : '#D1D5DB',
+          }}
+        />
+      ))}
+    </span>
+  );
+}
+
+/* ─── Hook: fetch public ratings for a business ─────────────────────────────── */
+function useBusinessRatings(slug) {
+  const [data, setData] = useState(null);
+  useEffect(() => {
+    if (!slug) return;
+    let cancelled = false;
+    api.get(`/api/business/public/${slug}/ratings`)
+      .then(res => { if (!cancelled) setData(res.data); })
+      .catch(() => {});
+    return () => { cancelled = true; };
+  }, [slug]);
+  return data;
+}
+
+/* ─── Business Card ──────────────────────────────────────────────────────────── */
 function BusinessCard({ business, index, darkMode }) {
-  const cardRef  = useRef(null);
-  const [hovered, setHovered] = useState(false);
+  const cardRef = useRef(null);
+  const [hovered,        setHovered]        = useState(false);
+  const [ratingOpen,     setRatingOpen]     = useState(false);
+  const [activeProduct,  setActiveProduct]  = useState(null); // { id, name }
 
   // 3-D tilt
   const mx   = useMotionValue(0);
   const my   = useMotionValue(0);
-  const rotX = useSpring(useTransform(my, [-0.5, 0.5], [6, -6]), { stiffness: 200, damping: 25 });
-  const rotY = useSpring(useTransform(mx, [-0.5, 0.5], [-6, 6]), { stiffness: 200, damping: 25 });
+  const rotX = useSpring(useTransform(my, [-0.5, 0.5], [6, -6]),  { stiffness: 200, damping: 25 });
+  const rotY = useSpring(useTransform(mx, [-0.5, 0.5], [-6, 6]),  { stiffness: 200, damping: 25 });
 
   function onMouseMove(e) {
     const r = cardRef.current?.getBoundingClientRect();
@@ -57,229 +93,331 @@ function BusinessCard({ business, index, darkMode }) {
   const p2   = business.secondaryColor || '#f59e0b';
   const name = business.businessName   || business.name || 'Business';
 
-  // ── REAL counts from the API ──────────────────────────────────────────────
   const productCount = business._count?.products ?? null;
-  const orderCount   = business._count?.orders   ?? null;
-  const joinedDate   = monthYear(business.createdAt);  // e.g. "Mar 2024"
+  const joinedDate   = monthYear(business.createdAt);
 
-  // Build only the stats chips that have real data
+  // Ratings from /api/business/public/:slug/ratings
+  const ratingsData    = useBusinessRatings(business.slug);
+  const avgRating      = ratingsData?.averageRating   ?? 0;
+  const totalRatings   = ratingsData?.totalRatings    ?? 0;
+  const recentReviews  = (ratingsData?.recentReviews  ?? []).slice(0, 2);
+
   const stats = [
-    productCount !== null && { icon: Package,     value: productCount, label: 'products' },
-    orderCount   !== null && { icon: ShoppingBag, value: orderCount,   label: 'orders'   },
+    productCount !== null && { icon: Package, value: productCount, label: 'products' },
   ].filter(Boolean);
 
   return (
-    <motion.div
-      ref={cardRef}
-      onMouseMove={onMouseMove}
-      onMouseLeave={onMouseLeave}
-      onHoverStart={() => setHovered(true)}
-      onHoverEnd={() => setHovered(false)}
-      style={{ rotateX: rotX, rotateY: rotY, transformStyle: 'preserve-3d', perspective: 900 }}
-      initial={{ opacity: 0, y: 40 }}
-      whileInView={{ opacity: 1, y: 0 }}
-      viewport={{ once: true }}
-      transition={{ delay: index * 0.08, duration: 0.5, ease: [0.16, 1, 0.3, 1] }}
-    >
-      <a
-        href={buildSubdomainUrl(business.slug)}
-        target="_blank"
-        rel="noopener noreferrer"
-        className="block rounded-[22px] overflow-hidden no-underline"
-        style={{
-          background: darkMode ? '#0e0e11' : '#ffffff',
-          border: `1px solid ${hovered ? rgba(p1, 0.5) : darkMode ? 'rgba(255,255,255,.07)' : 'rgba(0,0,0,.09)'}`,
-          boxShadow: hovered
-            ? `0 28px 64px -10px ${rgba(p1, 0.35)}, 0 0 0 1px ${rgba(p1, 0.2)}`
-            : '0 2px 16px rgba(0,0,0,.07)',
-          transition: 'box-shadow .3s ease, border-color .3s ease',
-        }}
+    <>
+      <motion.div
+        ref={cardRef}
+        onMouseMove={onMouseMove}
+        onMouseLeave={onMouseLeave}
+        onHoverStart={() => setHovered(true)}
+        onHoverEnd={() => setHovered(false)}
+        style={{ rotateX: rotX, rotateY: rotY, transformStyle: 'preserve-3d', perspective: 900 }}
+        initial={{ opacity: 0, y: 40 }}
+        whileInView={{ opacity: 1, y: 0 }}
+        viewport={{ once: true }}
+        transition={{ delay: index * 0.08, duration: 0.5, ease: [0.16, 1, 0.3, 1] }}
       >
+        <div
+          className="block rounded-[22px] overflow-hidden"
+          style={{
+            background:  darkMode ? '#0e0e11' : '#ffffff',
+            border:      `1px solid ${hovered ? rgba(p1, 0.5) : darkMode ? 'rgba(255,255,255,.07)' : 'rgba(0,0,0,.09)'}`,
+            boxShadow:   hovered
+              ? `0 28px 64px -10px ${rgba(p1, 0.35)}, 0 0 0 1px ${rgba(p1, 0.2)}`
+              : '0 2px 16px rgba(0,0,0,.07)',
+            transition: 'box-shadow .3s ease, border-color .3s ease',
+            position:   'relative',
+          }}
+        >
+          {/* ── HERO (clickable → visit store) ── */}
+          <a
+            href={buildSubdomainUrl(business.slug)}
+            target="_blank"
+            rel="noopener noreferrer"
+            className="block no-underline"
+          >
+            <div className="relative overflow-hidden" style={{ height: 148 }}>
+              <div className="absolute inset-0" style={{
+                background: `
+                  radial-gradient(ellipse at 15% 60%, ${p1}cc 0%, transparent 55%),
+                  radial-gradient(ellipse at 85% 15%, ${p2}aa 0%, transparent 52%),
+                  radial-gradient(ellipse at 55% 95%, ${rgba(p1, 0.4)} 0%, transparent 48%)
+                `,
+              }} />
+              <svg className="absolute inset-0 w-full h-full opacity-[0.12] pointer-events-none">
+                <defs>
+                  <pattern id={`g${business.id}`} x="0" y="0" width="18" height="18" patternUnits="userSpaceOnUse">
+                    <circle cx="1.5" cy="1.5" r="1.5" fill="white" />
+                  </pattern>
+                </defs>
+                <rect width="100%" height="100%" fill={`url(#g${business.id})`} />
+              </svg>
+              <div className="absolute -top-8 -right-8 rounded-full opacity-25 pointer-events-none"
+                style={{ width: 130, height: 130, background: p2, filter: 'blur(38px)' }} />
 
-        {/* ── HERO ── */}
-        <div className="relative overflow-hidden" style={{ height: 148 }}>
+              <motion.div
+                className="absolute inset-0 pointer-events-none"
+                animate={hovered ? { x: ['-130%', '230%'] } : { x: '-130%' }}
+                transition={hovered ? { duration: 0.6, ease: 'easeInOut' } : { duration: 0 }}
+                style={{ background: 'linear-gradient(105deg, transparent 36%, rgba(255,255,255,.2) 50%, transparent 64%)', transform: 'skewX(-14deg)' }}
+              />
+              <div className="absolute bottom-0 left-0 right-0 h-8 pointer-events-none"
+                style={{ background: `linear-gradient(to bottom, transparent, ${darkMode ? '#0e0e11' : '#fff'})` }} />
 
-          {/* Mesh gradient using real brand colours */}
-          <div className="absolute inset-0" style={{
-            background: `
-              radial-gradient(ellipse at 15% 60%, ${p1}cc 0%, transparent 55%),
-              radial-gradient(ellipse at 85% 15%, ${p2}aa 0%, transparent 52%),
-              radial-gradient(ellipse at 55% 95%, ${rgba(p1, 0.4)} 0%, transparent 48%)
-            `,
-          }} />
+              {business.businessType && (
+                <div className="absolute top-3 left-4 flex items-center gap-1.5 px-3 py-1.5 rounded-full"
+                  style={{ background: 'rgba(0,0,0,.3)', backdropFilter: 'blur(10px)', border: '1px solid rgba(255,255,255,.18)' }}>
+                  <Flame className="w-3 h-3 text-orange-300" />
+                  <span className="text-white text-[10px] font-bold tracking-widest uppercase">{business.businessType}</span>
+                </div>
+              )}
 
-          {/* Dot grid */}
-          <svg className="absolute inset-0 w-full h-full opacity-[0.12] pointer-events-none">
-            <defs>
-              <pattern id={`g${business.id}`} x="0" y="0" width="18" height="18" patternUnits="userSpaceOnUse">
-                <circle cx="1.5" cy="1.5" r="1.5" fill="white" />
-              </pattern>
-            </defs>
-            <rect width="100%" height="100%" fill={`url(#g${business.id})`} />
-          </svg>
+              <div className="absolute top-3 right-4 flex items-center gap-1.5 px-2.5 py-1.5 rounded-full"
+                style={{ background: 'rgba(0,0,0,.3)', backdropFilter: 'blur(10px)', border: '1px solid rgba(255,255,255,.18)' }}>
+                <CheckCircle className="w-3 h-3 text-emerald-400" />
+                <span className="text-white text-[10px] font-bold">Verified</span>
+              </div>
 
-          {/* Soft orb */}
-          <div className="absolute -top-8 -right-8 rounded-full opacity-25 pointer-events-none"
-            style={{ width: 130, height: 130, background: p2, filter: 'blur(38px)' }} />
+              {/* Logo */}
+              <div className="absolute -bottom-6 left-5" style={{ zIndex: 10 }}>
+                <motion.div
+                  animate={hovered ? { opacity: 1, scale: 1.18 } : { opacity: 0, scale: 0.9 }}
+                  transition={{ duration: 0.3 }}
+                  className="absolute inset-0 rounded-[16px] pointer-events-none"
+                  style={{ background: p1, filter: 'blur(14px)' }}
+                />
+                <div
+                  className="relative w-[56px] h-[56px] rounded-[16px] overflow-hidden flex items-center justify-center shadow-2xl"
+                  style={{ background: `linear-gradient(135deg, ${p1}, ${p2})`, border: `3px solid ${darkMode ? '#0e0e11' : '#fff'}` }}
+                >
+                  {business.logo
+                    ? <img src={business.logo} alt={name} className="w-full h-full object-cover"
+                        onError={e => { e.target.style.display='none'; e.target.nextSibling.style.display='flex'; }} />
+                    : null}
+                  <span className="text-white font-black text-xl flex items-center justify-center w-full h-full"
+                    style={{ display: business.logo ? 'none' : 'flex', fontFamily: '"Georgia", serif' }}>
+                    {name[0]?.toUpperCase()}
+                  </span>
+                </div>
+              </div>
 
-          {/* Shimmer on hover */}
-          <motion.div
-            className="absolute inset-0 pointer-events-none"
-            animate={hovered ? { x: ['−130%', '230%'] } : { x: '-130%' }}
-            transition={hovered ? { duration: 0.6, ease: 'easeInOut' } : { duration: 0 }}
-            style={{ background: 'linear-gradient(105deg, transparent 36%, rgba(255,255,255,.2) 50%, transparent 64%)', transform: 'skewX(-14deg)' }}
-          />
-
-          {/* Bottom fade */}
-          <div className="absolute bottom-0 left-0 right-0 h-8 pointer-events-none"
-            style={{ background: `linear-gradient(to bottom, transparent, ${darkMode ? '#0e0e11' : '#fff'})` }} />
-
-          {/* Business type — top left */}
-          {business.businessType && (
-            <div className="absolute top-3 left-4 flex items-center gap-1.5 px-3 py-1.5 rounded-full"
-              style={{ background: 'rgba(0,0,0,.3)', backdropFilter: 'blur(10px)', border: '1px solid rgba(255,255,255,.18)' }}>
-              <Flame className="w-3 h-3 text-orange-300" />
-              <span className="text-white text-[10px] font-bold tracking-widest uppercase">{business.businessType}</span>
+              {productCount !== null && (
+                <div className="absolute bottom-3 right-4 flex items-center gap-1.5 px-3 py-1.5 rounded-full"
+                  style={{ background: 'rgba(0,0,0,.35)', backdropFilter: 'blur(10px)', border: '1px solid rgba(255,255,255,.12)' }}>
+                  <Package className="w-3 h-3 text-white/70" />
+                  <span className="text-white text-[11px] font-bold">
+                    {productCount} product{productCount !== 1 ? 's' : ''}
+                  </span>
+                </div>
+              )}
             </div>
-          )}
 
-          {/* Verified badge — top right */}
-          <div className="absolute top-3 right-4 flex items-center gap-1.5 px-2.5 py-1.5 rounded-full"
-            style={{ background: 'rgba(0,0,0,.3)', backdropFilter: 'blur(10px)', border: '1px solid rgba(255,255,255,.18)' }}>
-            <CheckCircle className="w-3 h-3 text-emerald-400" />
-            <span className="text-white text-[10px] font-bold">Verified</span>
-          </div>
+            {/* ── BODY ── */}
+            <div className="px-5 pt-9 pb-4">
+              <h3 className="font-black text-[17px] leading-tight tracking-tight mb-1.5"
+                style={{ color: darkMode ? '#f0f0f0' : '#0a0a0a', fontFamily: '"Georgia","Times New Roman",serif' }}>
+                {name}
+              </h3>
 
-          {/* Logo avatar — bleeds into body */}
-          <div className="absolute -bottom-6 left-5" style={{ zIndex: 10 }}>
-            <motion.div
-              animate={hovered ? { opacity: 1, scale: 1.18 } : { opacity: 0, scale: 0.9 }}
-              transition={{ duration: 0.3 }}
-              className="absolute inset-0 rounded-[16px] pointer-events-none"
-              style={{ background: p1, filter: 'blur(14px)' }}
-            />
-            <div
-              className="relative w-[56px] h-[56px] rounded-[16px] overflow-hidden flex items-center justify-center shadow-2xl"
+              {business.description ? (
+                <p className="text-[13px] line-clamp-2 leading-relaxed mb-3"
+                  style={{ color: darkMode ? 'rgba(255,255,255,.38)' : '#666' }}>
+                  {business.description}
+                </p>
+              ) : <div className="mb-3" />}
+
+              {/* Rating row */}
+              {totalRatings > 0 ? (
+                <div className="flex items-center gap-2 mb-3">
+                  <MiniStars rating={avgRating} />
+                  <span className="text-[13px] font-bold" style={{ color: '#FBBF24' }}>
+                    {avgRating.toFixed(1)}
+                  </span>
+                  <span className="text-[11px]" style={{ color: darkMode ? 'rgba(255,255,255,.3)' : '#9CA3AF' }}>
+                    ({totalRatings} review{totalRatings !== 1 ? 's' : ''})
+                  </span>
+                </div>
+              ) : <div className="mb-3" />}
+
+              {/* Stats chips */}
+              {stats.length > 0 && (
+                <div className="flex gap-2 mb-3">
+                  {stats.map(({ icon: Icon, value, label }, i) => (
+                    <div key={i}
+                      className="flex items-center gap-1.5 px-3 py-2 rounded-[12px] flex-1 justify-center"
+                      style={{
+                        background: darkMode ? 'rgba(255,255,255,.04)' : rgba(p1, 0.06),
+                        border:     `1px solid ${darkMode ? 'rgba(255,255,255,.06)' : rgba(p1, 0.13)}`,
+                      }}>
+                      <Icon className="w-3.5 h-3.5" style={{ color: p1 }} />
+                      <span className="text-[12px] font-black" style={{ color: darkMode ? '#e0e0e0' : '#111' }}>{value}</span>
+                      <span className="text-[10px] uppercase tracking-wide" style={{ color: darkMode ? 'rgba(255,255,255,.3)' : '#999' }}>{label}</span>
+                    </div>
+                  ))}
+                </div>
+              )}
+
+              {/* Recent review snippets */}
+              {recentReviews.length > 0 && (
+                <div className="space-y-1.5 mb-3">
+                  {recentReviews.map((rev, i) => (
+                    <div key={i}
+                      className="px-3 py-2 rounded-xl text-[12px] leading-relaxed italic"
+                      style={{
+                        background: darkMode ? 'rgba(255,255,255,.04)' : rgba(p1, 0.05),
+                        color:      darkMode ? 'rgba(255,255,255,.5)' : '#555',
+                        border:     `1px solid ${darkMode ? 'rgba(255,255,255,.06)' : rgba(p1, 0.1)}`,
+                      }}>
+                      {rev.comment
+                        ? `"${rev.comment.length > 80 ? rev.comment.slice(0, 80) + '…' : rev.comment}"`
+                        : <span style={{ fontStyle: 'normal' }}><MiniStars rating={rev.rating} size={10} /></span>
+                      }
+                    </div>
+                  ))}
+                </div>
+              )}
+
+              {/* Member since */}
+              {joinedDate && (
+                <div className="mb-3">
+                  <span className="text-[11px] px-2.5 py-1 rounded-full font-semibold"
+                    style={{ background: rgba(p1, 0.1), color: p1, border: `1px solid ${rgba(p1, 0.2)}` }}>
+                    Member since {joinedDate}
+                  </span>
+                </div>
+              )}
+
+              <div className="h-px mb-3"
+                style={{ background: `linear-gradient(90deg, ${rgba(p1, 0.35)}, transparent)` }} />
+
+              {/* Footer row */}
+              <div className="flex items-center justify-between">
+                <div className="flex items-center gap-2">
+                  <span className="relative flex h-2.5 w-2.5">
+                    <span className="animate-ping absolute inline-flex h-full w-full rounded-full opacity-70" style={{ background: p1 }} />
+                    <span className="relative inline-flex rounded-full h-2.5 w-2.5" style={{ background: p1 }} />
+                  </span>
+                  <span className="text-[11px] font-medium" style={{ color: darkMode ? 'rgba(255,255,255,.32)' : '#999' }}>
+                    Live store
+                  </span>
+                </div>
+                <motion.div
+                  animate={hovered
+                    ? { background: `linear-gradient(135deg, ${p1}, ${p2})`, color: '#fff' }
+                    : { background: darkMode ? 'rgba(255,255,255,.07)' : rgba(p1, 0.09), color: p1 }
+                  }
+                  transition={{ duration: 0.22 }}
+                  className="flex items-center gap-2 px-4 py-2 rounded-xl text-[13px] font-bold"
+                >
+                  Visit Store
+                  <motion.span animate={hovered ? { x: 2 } : { x: 0 }} transition={{ duration: 0.18 }}>
+                    <ExternalLink className="w-3.5 h-3.5" />
+                  </motion.span>
+                </motion.div>
+              </div>
+            </div>
+          </a>
+
+          {/* ── RATE BUTTON (outside the store link) ── */}
+          <div className="px-5 pb-5">
+            <button
+              onClick={e => {
+                e.stopPropagation();
+                // Use first product if available, else open generic widget
+                setActiveProduct({ id: null, name: name });
+                setRatingOpen(true);
+              }}
+              className="w-full flex items-center justify-center gap-2 py-2.5 rounded-xl text-[13px] font-semibold transition-all"
               style={{
-                background: `linear-gradient(135deg, ${p1}, ${p2})`,
-                border: `3px solid ${darkMode ? '#0e0e11' : '#fff'}`,
+                background: darkMode ? 'rgba(255,255,255,.05)' : rgba(p1, 0.07),
+                color:      darkMode ? 'rgba(255,255,255,.5)' : p1,
+                border:     `1px solid ${darkMode ? 'rgba(255,255,255,.08)' : rgba(p1, 0.15)}`,
               }}
             >
-              {business.logo
-                ? <img src={business.logo} alt={name} className="w-full h-full object-cover"
-                    onError={e => { e.target.style.display='none'; e.target.nextSibling.style.display='flex'; }} />
-                : null}
-              <span className="text-white font-black text-xl flex items-center justify-center w-full h-full"
-                style={{ display: business.logo ? 'none' : 'flex', fontFamily: '"Georgia", serif' }}>
-                {name[0]?.toUpperCase()}
-              </span>
-            </div>
+              <MessageSquare className="w-4 h-4" />
+              {totalRatings > 0 ? `${totalRatings} Review${totalRatings !== 1 ? 's' : ''} · Rate` : 'Be first to review'}
+            </button>
           </div>
 
-          {/* Product count — bottom right of hero */}
-          {productCount !== null && (
-            <div className="absolute bottom-3 right-4 flex items-center gap-1.5 px-3 py-1.5 rounded-full"
-              style={{ background: 'rgba(0,0,0,.35)', backdropFilter: 'blur(10px)', border: '1px solid rgba(255,255,255,.12)' }}>
-              <Package className="w-3 h-3 text-white/70" />
-              <span className="text-white text-[11px] font-bold">
-                {productCount} product{productCount !== 1 ? 's' : ''}
-              </span>
-            </div>
-          )}
+          {/* Bottom accent bar */}
+          <motion.div
+            animate={{ scaleX: hovered ? 1 : 0, opacity: hovered ? 1 : 0 }}
+            transition={{ duration: 0.3 }}
+            className="absolute bottom-0 left-0 right-0 origin-left"
+            style={{ height: 3, background: `linear-gradient(90deg, ${p1}, ${p2})` }}
+          />
         </div>
+      </motion.div>
 
-        {/* ── BODY ── */}
-        <div className="px-5 pt-9 pb-5">
-
-          {/* Name */}
-          <h3 className="font-black text-[17px] leading-tight tracking-tight mb-1.5"
-            style={{ color: darkMode ? '#f0f0f0' : '#0a0a0a', fontFamily: '"Georgia","Times New Roman",serif' }}>
-            {name}
-          </h3>
-
-          {/* Description — real or nothing */}
-          {business.description ? (
-            <p className="text-[13px] line-clamp-2 leading-relaxed mb-4"
-              style={{ color: darkMode ? 'rgba(255,255,255,.38)' : '#666' }}>
-              {business.description}
-            </p>
-          ) : (
-            <div className="mb-4" />
-          )}
-
-          {/* Real stats chips — only shown when count > 0 */}
-          {stats.length > 0 && (
-            <div className="flex gap-2 mb-4">
-              {stats.map(({ icon: Icon, value, label }, i) => (
-                <div key={i}
-                  className="flex items-center gap-1.5 px-3 py-2 rounded-[12px] flex-1 justify-center"
-                  style={{
-                    background: darkMode ? 'rgba(255,255,255,.04)' : rgba(p1, 0.06),
-                    border: `1px solid ${darkMode ? 'rgba(255,255,255,.06)' : rgba(p1, 0.13)}`,
-                  }}>
-                  <Icon className="w-3.5 h-3.5" style={{ color: p1 }} />
-                  <span className="text-[12px] font-black" style={{ color: darkMode ? '#e0e0e0' : '#111' }}>{value}</span>
-                  <span className="text-[10px] uppercase tracking-wide" style={{ color: darkMode ? 'rgba(255,255,255,.3)' : '#999' }}>{label}</span>
-                </div>
-              ))}
-            </div>
-          )}
-
-          {/* Joined date badge */}
-          {joinedDate && (
-            <div className="flex items-center gap-1.5 mb-4">
-              <span className="text-[11px] px-2.5 py-1 rounded-full font-semibold"
-                style={{ background: rgba(p1, 0.1), color: p1, border: `1px solid ${rgba(p1, 0.2)}` }}>
-                Member since {joinedDate}
-              </span>
-            </div>
-          )}
-
-          {/* Divider — brand tinted */}
-          <div className="h-px mb-4"
-            style={{ background: `linear-gradient(90deg, ${rgba(p1, 0.35)}, transparent)` }} />
-
-          {/* Footer row */}
-          <div className="flex items-center justify-between">
-            {/* Live pulse */}
-            <div className="flex items-center gap-2">
-              <span className="relative flex h-2.5 w-2.5">
-                <span className="animate-ping absolute inline-flex h-full w-full rounded-full opacity-70"
-                  style={{ background: p1 }} />
-                <span className="relative inline-flex rounded-full h-2.5 w-2.5" style={{ background: p1 }} />
-              </span>
-              <span className="text-[11px] font-medium"
-                style={{ color: darkMode ? 'rgba(255,255,255,.32)' : '#999' }}>
-                Live store
-              </span>
-            </div>
-
-            {/* CTA */}
+      {/* ── Rating Modal ── */}
+      <AnimatePresence>
+        {ratingOpen && (
+          <div className="fixed inset-0 z-[100] flex items-center justify-center p-4">
             <motion.div
-              animate={hovered
-                ? { background: `linear-gradient(135deg, ${p1}, ${p2})`, color: '#fff' }
-                : { background: darkMode ? 'rgba(255,255,255,.07)' : rgba(p1, 0.09), color: p1 }
-              }
-              transition={{ duration: 0.22 }}
-              className="flex items-center gap-2 px-4 py-2 rounded-xl text-[13px] font-bold"
+              initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}
+              className="absolute inset-0 bg-black/60 backdrop-blur-sm"
+              onClick={() => setRatingOpen(false)}
+            />
+            <motion.div
+              initial={{ opacity: 0, scale: 0.95, y: 16 }}
+              animate={{ opacity: 1, scale: 1,    y: 0  }}
+              exit={  { opacity: 0, scale: 0.95, y: 16  }}
+              className="relative w-full max-w-md z-10"
             >
-              Visit Store
-              <motion.span animate={hovered ? { x: 2 } : { x: 0 }} transition={{ duration: 0.18 }}>
-                <ExternalLink className="w-3.5 h-3.5" />
-              </motion.span>
+              {/* If no specific productId, show a message directing to the store */}
+              <div
+                className="rounded-2xl overflow-hidden"
+                style={{
+                  background: darkMode ? '#1c1c1e' : '#fff',
+                  border:     `1px solid ${darkMode ? 'rgba(255,255,255,.1)' : '#e5e7eb'}`,
+                  boxShadow:  '0 24px 64px rgba(0,0,0,.2)',
+                }}
+              >
+                <div className="flex items-center justify-between px-5 py-4 border-b"
+                  style={{ borderColor: darkMode ? 'rgba(255,255,255,.08)' : '#f3f4f6' }}>
+                  <div>
+                    <h3 className="font-bold text-base" style={{ color: darkMode ? '#f0f0f0' : '#111' }}>
+                      Review {name}
+                    </h3>
+                    <p className="text-xs mt-0.5" style={{ color: darkMode ? 'rgba(255,255,255,.4)' : '#9CA3AF' }}>
+                      Rate a specific product you purchased
+                    </p>
+                  </div>
+                  <button onClick={() => setRatingOpen(false)}
+                    className="p-1.5 rounded-lg transition-colors"
+                    style={{ color: darkMode ? 'rgba(255,255,255,.4)' : '#9CA3AF' }}>
+                    <X className="w-4 h-4" />
+                  </button>
+                </div>
+                <div className="p-5 text-center">
+                  <div className="w-14 h-14 rounded-2xl mx-auto mb-4 flex items-center justify-center"
+                    style={{ background: rgba(p1, 0.12) }}>
+                    <Star className="w-7 h-7" style={{ color: p1 }} />
+                  </div>
+                  <p className="text-sm mb-5" style={{ color: darkMode ? 'rgba(255,255,255,.5)' : '#666' }}>
+                    To leave a review, visit the store and click "Rate" on the product you received.
+                    You'll need the phone number you used when ordering.
+                  </p>
+                  <a
+                    href={buildSubdomainUrl(business.slug)}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    onClick={() => setRatingOpen(false)}
+                    className="inline-flex items-center gap-2 px-6 py-3 rounded-xl text-sm font-bold text-white"
+                    style={{ background: `linear-gradient(135deg, ${p1}, ${p2})` }}
+                  >
+                    Go to {name} store <ExternalLink className="w-3.5 h-3.5" />
+                  </a>
+                </div>
+              </div>
             </motion.div>
           </div>
-        </div>
-
-        {/* Bottom accent bar */}
-        <motion.div
-          animate={{ scaleX: hovered ? 1 : 0, opacity: hovered ? 1 : 0 }}
-          transition={{ duration: 0.3 }}
-          className="absolute bottom-0 left-0 right-0 origin-left"
-          style={{ height: 3, background: `linear-gradient(90deg, ${p1}, ${p2})` }}
-        />
-      </a>
-    </motion.div>
+        )}
+      </AnimatePresence>
+    </>
   );
 }
 
@@ -412,7 +550,7 @@ const MainLanding = () => {
   const fetchBusinesses = async () => {
     try {
       setLoading(true);
-      const res = await api.get('/api/onboarding/businesses');
+      const res = await api.get('/api/business/public/all');
       const raw = Array.isArray(res.data) ? res.data : (res.data?.businesses || []);
       setBusinesses(raw.map(b => ({ ...b, name: b.businessName || b.name })));
     } catch (e) { console.error(e); } finally { setLoading(false); }

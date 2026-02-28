@@ -1,6 +1,7 @@
 // backend/src/routes/business.js
 const express = require('express');
-const router = express.Router();
+const router  = express.Router();
+
 const {
   getBusinessBySlug,
   getAllBusinesses,
@@ -11,8 +12,9 @@ const {
   getCurrentBusiness,
   toggleBusinessStatus,
   getPublicBusiness,
-  getPublicProducts,     
+  getPublicProducts,
   getAllPublicBusinesses,
+  getBusinessPublicRatings,
 } = require('../controllers/businessController');
 
 const {
@@ -26,29 +28,30 @@ const {
 const { authMiddleware, requireSuperAdmin } = require('../middleware/auth');
 const { asyncHandler } = require('../middleware/errorHandler');
 
-// ── Public routes (no auth) ──────────────────────────────────────────────────
-router.get('/public/all', asyncHandler(getAllPublicBusinesses));          // ✅ specific first
-router.get('/public/:slug', asyncHandler(getPublicBusiness));             // ✅ one handler
-router.get('/public/:slug/products', asyncHandler(getPublicProducts));    // ✅ uses getPublicProducts (has images include)
+// ── Public routes (no auth) — specific paths BEFORE :slug catch-all ──────────
+router.get('/public/all',              asyncHandler(getAllPublicBusinesses));
+router.get('/public/:slug/ratings',    asyncHandler(getBusinessPublicRatings));  // ✅ NEW — before :slug
+router.get('/public/:slug/products',   asyncHandler(getPublicProducts));
+router.get('/public/:slug',            asyncHandler(getPublicBusiness));
 
-router.get('/by-slug/:slug', asyncHandler(getBusinessBySlug));
+router.get('/by-slug/:slug',           asyncHandler(getBusinessBySlug));
 
 // ── Authenticated specific paths (before /:id) ───────────────────────────────
 router.get('/current',   authMiddleware, asyncHandler(getCurrentBusiness));
 router.get('/expiring',  authMiddleware, requireSuperAdmin, asyncHandler(getExpiringSubscriptions));
 
 // ── Super-admin collection routes ────────────────────────────────────────────
-router.get('/',          authMiddleware, requireSuperAdmin, asyncHandler(getAllBusinesses));
-router.post('/',         authMiddleware, requireSuperAdmin, asyncHandler(createBusiness));
+router.get('/',            authMiddleware, requireSuperAdmin, asyncHandler(getAllBusinesses));
+router.post('/',           authMiddleware, requireSuperAdmin, asyncHandler(createBusiness));
 router.post('/bulk-renew', authMiddleware, requireSuperAdmin, asyncHandler(bulkRenewSubscriptions));
 
 // ── Dynamic /:id routes (last) ───────────────────────────────────────────────
-router.get('/:id',       authMiddleware, asyncHandler(getBusiness));
-router.get('/:id/subscription-status', authMiddleware, asyncHandler(getSubscriptionStatusDetails));
-router.put('/:id',       authMiddleware, asyncHandler(updateBusiness));
-router.delete('/:id',    authMiddleware, requireSuperAdmin, asyncHandler(deleteBusiness));
-router.post('/:id/toggle-status',       authMiddleware, requireSuperAdmin, asyncHandler(toggleBusinessStatus));
-router.post('/:id/update-subscription', authMiddleware, requireSuperAdmin, asyncHandler(updateSubscription));
-router.post('/:id/start-trial',         authMiddleware, requireSuperAdmin, asyncHandler(startFreeTrial));
+router.get   ('/:id',                      authMiddleware, asyncHandler(getBusiness));
+router.get   ('/:id/subscription-status',  authMiddleware, asyncHandler(getSubscriptionStatusDetails));
+router.put   ('/:id',                      authMiddleware, asyncHandler(updateBusiness));
+router.delete('/:id',                      authMiddleware, requireSuperAdmin, asyncHandler(deleteBusiness));
+router.post  ('/:id/toggle-status',        authMiddleware, requireSuperAdmin, asyncHandler(toggleBusinessStatus));
+router.post  ('/:id/update-subscription',  authMiddleware, requireSuperAdmin, asyncHandler(updateSubscription));
+router.post  ('/:id/start-trial',          authMiddleware, requireSuperAdmin, asyncHandler(startFreeTrial));
 
 module.exports = router;
