@@ -1,15 +1,28 @@
 {
   "name": "mypadifood-backend",
   "version": "1.0.0",
+  "description": "MyPadiFood Multi-Tenant Backend API",
   "main": "src/server.js",
+  "type": "commonjs",
+
+  "engines": {
+    "node": "22.x"
+  },
+
   "scripts": {
     "dev": "nodemon src/server.js",
     "start": "node src/server.js",
+
+    "build": "prisma generate",
+    "postinstall": "prisma generate",
+
     "db:push": "prisma db push",
+    "db:migrate": "prisma migrate deploy",
     "db:generate": "prisma generate",
     "db:seed": "node scripts/seed.js",
     "db:studio": "prisma studio"
   },
+
   "dependencies": {
     "@prisma/client": "^5.7.0",
     "axios": "^1.13.4",
@@ -21,8 +34,13 @@
     "multer": "^2.0.2",
     "node-cron": "^4.2.1"
   },
+
   "devDependencies": {
     "nodemon": "^3.0.1",
     "prisma": "^5.7.0"
+  },
+
+  "prisma": {
+    "seed": "node scripts/seed.js"
   }
 }
