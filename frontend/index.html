@@ -3,12 +3,97 @@
 <html lang="en">
   <head>
     <meta charset="UTF-8" />
-    <link rel="icon" type="image/svg+xml" href="/vite.svg" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>MyPadiBusiness - Multi-Tenant Business Management</title>
-    <link rel="preconnect" href="https://fonts.googleapis.com">
-    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-    <link href="https://fonts.googleapis.com/css2?family=Poppins:wght@400;500;600;700;800&family=Inter:wght@300;400;500;600;700&family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet">
+
+    <!-- ═══════════════════════════════════════════════════════════════════
+         PRIMARY SEO META TAGS
+         These are what Google reads to understand and rank the page.
+         ═══════════════════════════════════════════════════════════════════ -->
+    <title>MyPadiBusiness – Online Store Platform for Nigerian Businesses</title>
+    <meta name="description"
+      content="MyPadiBusiness helps Nigerian businesses sell online. Create your free store, manage products, take orders via WhatsApp, and grow your business. Join hundreds of stores on MyPadiFood." />
+    <meta name="keywords"
+      content="online store Nigeria, sell online Nigeria, WhatsApp business, e-commerce Nigeria, MyPadiBusiness, Nigerian marketplace, order management" />
+    <meta name="author" content="MyPadiBusiness" />
+    <link rel="canonical" href="https://www.mypadifood.com/" />
+
+    <!-- ═══════════════════════════════════════════════════════════════════
+         OPEN GRAPH (Facebook, WhatsApp, LinkedIn previews)
+         ═══════════════════════════════════════════════════════════════════ -->
+    <meta property="og:type"        content="website" />
+    <meta property="og:url"         content="https://www.mypadifood.com/" />
+    <meta property="og:title"       content="MyPadiBusiness – Online Store Platform for Nigerian Businesses" />
+    <meta property="og:description" content="Create your free online store. Manage inventory, take orders via WhatsApp, and grow your business in Nigeria." />
+    <meta property="og:image"       content="https://www.mypadifood.com/og-image.png" />
+    <meta property="og:image:width"  content="1200" />
+    <meta property="og:image:height" content="630" />
+    <meta property="og:locale"      content="en_NG" />
+    <meta property="og:site_name"   content="MyPadiBusiness" />
+
+    <!-- ═══════════════════════════════════════════════════════════════════
+         TWITTER CARD
+         ═══════════════════════════════════════════════════════════════════ -->
+    <meta name="twitter:card"        content="summary_large_image" />
+    <meta name="twitter:title"       content="MyPadiBusiness – Online Store Platform" />
+    <meta name="twitter:description" content="The easiest way for Nigerian businesses to sell online with WhatsApp integration." />
+    <meta name="twitter:image"       content="https://www.mypadifood.com/og-image.png" />
+
+    <!-- ═══════════════════════════════════════════════════════════════════
+         STRUCTURED DATA (JSON-LD) — Google rich results
+         Tells Google this is a software application / SaaS product.
+         ═══════════════════════════════════════════════════════════════════ -->
+    <script type="application/ld+json">
+    {
+      "@context": "https://schema.org",
+      "@type": "SoftwareApplication",
+      "name": "MyPadiBusiness",
+      "url": "https://www.mypadifood.com",
+      "description": "Multi-tenant e-commerce platform for Nigerian businesses with WhatsApp order integration, inventory management, and subscription billing.",
+      "applicationCategory": "BusinessApplication",
+      "operatingSystem": "Web",
+      "offers": {
+        "@type": "Offer",
+        "price": "0",
+        "priceCurrency": "NGN",
+        "description": "Free to join – paid subscription plans available"
+      },
+      "provider": {
+        "@type": "Organization",
+        "name": "MyPadiBusiness",
+        "url": "https://www.mypadifood.com",
+        "contactPoint": {
+          "@type": "ContactPoint",
+          "telephone": "+2348110252143",
+          "contactType": "customer support",
+          "availableLanguage": ["English"]
+        }
+      }
+    }
+    </script>
+
+    <!-- ═══════════════════════════════════════════════════════════════════
+         FAVICON & ICONS
+         Replace /vite.svg with your actual logo files.
+         ═══════════════════════════════════════════════════════════════════ -->
+    <link rel="icon"             type="image/svg+xml" href="/favicon.svg" />
+    <link rel="icon"             type="image/png" sizes="32x32" href="/favicon-32.png" />
+    <link rel="icon"             type="image/png" sizes="16x16" href="/favicon-16.png" />
+    <link rel="apple-touch-icon" sizes="180x180" href="/apple-touch-icon.png" />
+    <link rel="manifest"         href="/site.webmanifest" />
+    <meta name="theme-color"     content="#F97316" />
+
+    <!-- ═══════════════════════════════════════════════════════════════════
+         FONTS — Preconnect reduces TTFB for Google Fonts
+         ═══════════════════════════════════════════════════════════════════ -->
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&family=Poppins:wght@400;500;600;700;800&family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet" />
+
+    <!-- ═══════════════════════════════════════════════════════════════════
+         ROBOTS — Tell Google to index everything
+         ═══════════════════════════════════════════════════════════════════ -->
+    <meta name="robots" content="index, follow" />
+    <meta name="googlebot" content="index, follow, max-snippet:-1, max-image-preview:large, max-video-preview:-1" />
   </head>
   <body>
     <div id="root"></div>

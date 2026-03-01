@@ -20,16 +20,34 @@ function formatAmount(amount, currency = 'NGN') {
 // ============================================================================
 // CHECKOUT (Public)
 // ============================================================================
+// ✅ ROOT-CAUSE FIX: Old code relied on req.businessId from subdomain middleware.
+// With path-based routing there's no subdomain, so req.businessId is always null
+// → every checkout hit "Business context required" and returned 500.
+//
+// Fix: read businessId from req.body.businessId (sent by CheckoutModal).
+// CheckoutModal must include: { ...orderData, businessId: business.id }
+// ============================================================================
 async function checkout(req, res) {
-  const { customerName, phone, address, email, message, items } = req.body;
+  const {
+    customerName, phone, address, email, message, items,
+    businessId: bodyBusinessId,   // ✅ NEW: sent by CheckoutModal
+  } = req.body;
 
   if (!customerName || !phone || !items || items.length === 0) {
-    throw new Error('Missing required fields');
+    return res.status(400).json({
+      success: false,
+      error: 'Missing required fields: customerName, phone, and items are required',
+    });
   }
 
-  const businessId = req.businessId;
+  // ✅ Path-based: body wins, subdomain middleware fallback for any legacy setup
+  const businessId = bodyBusinessId ? Number(bodyBusinessId) : req.businessId;
+
   if (!businessId) {
-    throw new Error('Business context required. Please access via proper subdomain.');
+    return res.status(400).json({
+      success: false,
+      error: 'Business context required. Please include businessId in the request.',
+    });
   }
 
   const normalizedPhone = normalizePhone(phone);
@@ -41,14 +59,18 @@ async function checkout(req, res) {
 
   const productMap = new Map(products.map(p => [p.id, p]));
 
-  let totalAmount = 0;
-  const orderItems    = [];
+  let totalAmount      = 0;
+  const orderItems     = [];
   const productUpdates = [];
 
   for (const item of items) {
     const product = productMap.get(item.productId);
-    if (!product)                       throw new Error(`Product ${item.productId} not found or not available`);
-    if (product.stock < item.quantity)  throw new Error(`Insufficient stock for ${product.name}`);
+    if (!product) {
+      return res.status(400).json({ success: false, error: `Product ${item.productId} not found or not available` });
+    }
+    if (product.stock < item.quantity) {
+      return res.status(400).json({ success: false, error: `Insufficient stock for ${product.name}` });
+    }
 
     totalAmount += product.price * item.quantity;
     orderItems.push({ productId: product.id, quantity: item.quantity, unitPrice: product.price });
@@ -87,21 +109,19 @@ async function checkout(req, res) {
   }, { maxWait: 10000, timeout: 15000 });
 
   const completeOrder = await prisma.order.findUnique({
-    where: { id: order.id },
+    where:   { id: order.id },
     include: { items: { include: { product: true } } },
   });
 
-  // New order notification
   await notify.order(businessId, order.id, customerName, formatAmount(totalAmount));
 
-  // Low stock warnings for products that dropped below threshold
-  for (const { id, name, newStock, businessId: bId } of productUpdates) {
+  for (const { id, name, newStock } of productUpdates) {
     if (newStock <= LOW_STOCK_THRESHOLD && newStock > 0) {
       await notify.lowStock(businessId, id, name, newStock);
     }
   }
 
-  console.log(`✅ Order created: ${completeOrder.id} for business ${businessId}`);
+  console.log(`✅ Order #${completeOrder.id} created for business ${businessId}`);
 
   res.status(201).json({
     success: true,
@@ -143,14 +163,7 @@ async function confirmPayment(req, res) {
     include: { items: { include: { product: true } } },
   });
 
-  await notify.payment(
-    order.businessId,
-    order.id,
-    order.customerName,
-    formatAmount(order.totalAmount, order.currency)
-  );
-
-  console.log('💰 Payment confirmed for order:', updatedOrder.id);
+  await notify.payment(order.businessId, order.id, order.customerName, formatAmount(order.totalAmount, order.currency));
 
   res.json({
     success: true,
@@ -180,16 +193,13 @@ async function updateOrderStatus(req, res) {
 
   const updatedOrder = await prisma.order.update({
     where: { id: Number(req.params.id) },
-    data: { status, statusHistory: JSON.stringify(history) },
+    data:  { status, statusHistory: JSON.stringify(history) },
     include: { items: { include: { product: true } } },
   });
 
-  // Notify on meaningful status changes
   if (['DELIVERED', 'CANCELLED', 'OUT_FOR_DELIVERY'].includes(status)) {
     await notify.orderStatus(order.businessId, order.id, status, order.customerName);
   }
-
-  console.log(`📦 Order ${updatedOrder.id} status updated to:`, status);
 
   res.json({
     success: true,
@@ -223,10 +233,10 @@ async function getAllOrders(req, res) {
   const [orders, total] = await Promise.all([
     prisma.order.findMany({
       where,
-      skip:     (page - 1) * limit,
-      take:     Number(limit),
-      orderBy:  { createdAt: 'desc' },
-      include:  { items: { include: { product: true } } },
+      skip:    (Number(page) - 1) * Number(limit),
+      take:    Number(limit),
+      orderBy: { createdAt: 'desc' },
+      include: { items: { include: { product: true } } },
     }),
     prisma.order.count({ where }),
   ]);
@@ -234,7 +244,7 @@ async function getAllOrders(req, res) {
   res.json({
     success: true,
     orders: orders.map(o => ({ ...o, statusHistory: o.statusHistory ? JSON.parse(o.statusHistory) : [] })),
-    pagination: { total, page: Number(page), limit: Number(limit), totalPages: Math.ceil(total / limit) },
+    pagination: { total, page: Number(page), limit: Number(limit), totalPages: Math.ceil(total / Number(limit)) },
   });
 }
 
@@ -243,7 +253,7 @@ async function getAllOrders(req, res) {
 // ============================================================================
 async function getOrderById(req, res) {
   const order = await prisma.order.findUnique({
-    where: { id: Number(req.params.id) },
+    where:   { id: Number(req.params.id) },
     include: { items: { include: { product: true } } },
   });
 
@@ -290,7 +300,7 @@ async function trackOrder(req, res) {
 // ============================================================================
 async function deleteOrder(req, res) {
   const order = await prisma.order.findUnique({
-    where: { id: Number(req.params.id) },
+    where:   { id: Number(req.params.id) },
     include: { items: true },
   });
 
@@ -311,80 +321,39 @@ async function deleteOrder(req, res) {
   }
 
   await prisma.order.delete({ where: { id: Number(req.params.id) } });
-
-  console.log('🗑️ Order deleted:', req.params.id);
   res.json({ success: true, message: 'Order deleted' });
 }
 
 // ============================================================================
-// GET ORDER STATS (Dashboard)
-// GET /api/orders/stats
-// Returns real numbers: revenue from CONFIRMED orders, unique customers, etc.
+// GET ORDER STATS
 // ============================================================================
 async function getOrderStats(req, res) {
   const businessId = req.businessId || req.user?.businessId;
   if (!businessId) return res.status(400).json({ error: 'Business context required' });
 
   const [
-    totalOrdersCount,
-    confirmedOrders,
-    uniqueCustomers,
-    activeProducts,
-    pendingCount,
-    deliveredCount,
-    cancelledCount,
-    recentRevenue,   // revenue in last 30 days
+    totalOrdersCount, confirmedOrders, uniqueCustomers,
+    activeProducts, pendingCount, deliveredCount, cancelledCount, recentRevenue,
   ] = await Promise.all([
-
-    // All orders ever
     prisma.order.count({ where: { businessId } }),
-
-    // Orders with confirmed payment — used for revenue
-    prisma.order.findMany({
-      where:  { businessId, paymentStatus: 'CONFIRMED' },
-      select: { totalAmount: true },
-    }),
-
-    // Unique customers = distinct phone numbers that placed orders
-    prisma.order.groupBy({
-      by:    ['phone'],
-      where: { businessId },
-      _count: { phone: true },
-    }),
-
-    // Active (available) products
+    prisma.order.findMany({ where: { businessId, paymentStatus: 'CONFIRMED' }, select: { totalAmount: true } }),
+    prisma.order.groupBy({ by: ['phone'], where: { businessId }, _count: { phone: true } }),
     prisma.product.count({ where: { businessId, isAvailable: true } }),
-
-    // Pending orders
     prisma.order.count({ where: { businessId, status: 'PENDING' } }),
-
-    // Delivered orders
     prisma.order.count({ where: { businessId, status: 'DELIVERED' } }),
-
-    // Cancelled orders
     prisma.order.count({ where: { businessId, status: 'CANCELLED' } }),
-
-    // Revenue last 30 days (CONFIRMED payments)
     prisma.order.findMany({
-      where: {
-        businessId,
-        paymentStatus: 'CONFIRMED',
-        createdAt: { gte: new Date(Date.now() - 30 * 24 * 60 * 60 * 1000) },
-      },
+      where: { businessId, paymentStatus: 'CONFIRMED', createdAt: { gte: new Date(Date.now() - 30 * 24 * 60 * 60 * 1000) } },
       select: { totalAmount: true },
     }),
   ]);
 
-  const totalRevenue      = confirmedOrders.reduce((sum, o) => sum + Number(o.totalAmount), 0);
-  const recentRevenueAmt  = recentRevenue.reduce((sum, o)  => sum + Number(o.totalAmount), 0);
-  const totalCustomers    = uniqueCustomers.length;  // distinct phone numbers
-
   return res.json({
-    success:        true,
-    totalRevenue,
-    recentRevenue:  recentRevenueAmt,
-    totalOrders:    totalOrdersCount,
-    totalCustomers,
+    success:         true,
+    totalRevenue:    confirmedOrders.reduce((s, o) => s + Number(o.totalAmount), 0),
+    recentRevenue:   recentRevenue.reduce((s, o) => s + Number(o.totalAmount), 0),
+    totalOrders:     totalOrdersCount,
+    totalCustomers:  uniqueCustomers.length,
     activeProducts,
     pendingOrders:   pendingCount,
     deliveredOrders: deliveredCount,
@@ -393,4 +362,7 @@ async function getOrderStats(req, res) {
   });
 }
 
-module.exports = { checkout, getAllOrders, getOrderById, confirmPayment, updateOrderStatus, trackOrder, deleteOrder, getOrderStats };
+module.exports = {
+  checkout, getAllOrders, getOrderById, confirmPayment,
+  updateOrderStatus, trackOrder, deleteOrder, getOrderStats,
+};

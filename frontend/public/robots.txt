@@ -1,0 +1,12 @@
+# robots.txt — tells Google what to crawl
+# Place this at: frontend/public/robots.txt
+
+User-agent: *
+Allow: /
+Allow: /store/
+Disallow: /dashboard/
+Disallow: /super-admin/
+Disallow: /login
+
+# Sitemap location
+Sitemap: https://www.mypadifood.com/sitemap.xml

@@ -52,6 +52,7 @@ export function CheckoutModal({ cart, business, dark, primary, secondary, onClos
         email: form.email || '',
         address: form.address,
         message: form.message || '',
+        businessId: business.id,
         items: cart.map(item => ({
           productId: item.id,
           quantity: item.quantity,
