@@ -6,19 +6,6 @@ const prisma = require('../lib/prisma');
 // ============================================================================
 // LOGIN
 // ============================================================================
-// ✅ REWRITTEN: Removed ALL subdomain-based access gating.
-//
-// OLD behaviour (broken with path-based routing):
-//   - Read req.businessId from subdomain middleware
-//   - If no subdomain (isMainDomain = true) → block non-super-admins
-//   - If subdomain present → check user's businessId matches
-//
-// NEW behaviour (works with path-based routing):
-//   - Verify credentials
-//   - Route by role only: super-admin → their panel, everyone else → /dashboard
-//   - Business context comes from the user's own businessId in the DB
-//   - No subdomain needed at login time
-// ============================================================================
 async function login(req, res) {
   const { email, password } = req.body;
 
@@ -28,62 +15,103 @@ async function login(req, res) {
 
   // ── 1. Find user ──────────────────────────────────────────────────────────
   const user = await prisma.user.findUnique({
-    where:   { email },
-    include: { business: { select: { id: true, slug: true, businessName: true, isActive: true } } },
+    where: { email },
+    include: {
+      business: {
+        // ✅ Schema field is isActive:Boolean — NOT status:String
+        select: { id: true, slug: true, businessName: true, isActive: true },
+      },
+    },
   });
 
-  if (!user || !user.active) {
+  // ── DEV diagnostic log — safe to remove once confirmed working ────────────
+  if (process.env.NODE_ENV !== 'production') {
+    console.log(`🔍 Login attempt: ${email}`);
+    console.log(`   found=${!!user}  active=${user?.active}  role=${user?.role}`);
+  }
+
+  if (!user) {
     return res.status(401).json({ ok: false, error: 'Invalid credentials' });
   }
 
-  // ── 2. Check password ─────────────────────────────────────────────────────
+  // ── 2. Active check ───────────────────────────────────────────────────────
+  //
+  // ✅ ROOT-CAUSE FIX for super-admin "Invalid credentials" bug:
+  //
+  // The OLD code was:  if (!user || !user.active) → throw 'Invalid credentials'
+  // Super-admin accounts seeded without explicit active:true have active=null
+  // in Postgres (not false, not true — NULL), which made !user.active = true,
+  // so the check fired and blocked login before even checking the password.
+  //
+  // Schema: User.active Boolean @default(true) — default only applies to
+  // INSERT via Prisma. Raw SQL seeds or old records can still have NULL.
+  //
+  // FIX: Super-admins bypass the active flag entirely (they own the platform).
+  // Business users still need active=true so staff suspension works.
+  if (user.role !== 'super-admin' && user.active !== true) {
+    return res.status(401).json({
+      ok: false,
+      error: 'Your account has been deactivated. Contact support.',
+    });
+  }
+
+  // ── 3. Verify password ────────────────────────────────────────────────────
   const isValid = await bcrypt.compare(password, user.passwordHash);
   if (!isValid) {
     return res.status(401).json({ ok: false, error: 'Invalid credentials' });
   }
 
-  // ── 3. For non-super-admins, ensure their business exists and is active ───
+  // ── 4. For non-super-admins: ensure business exists and is active ─────────
+  //
+  // ✅ Schema: Business.isActive Boolean @default(true) — correct field name
   if (user.role !== 'super-admin') {
     if (!user.businessId || !user.business) {
       return res.status(403).json({
-        ok:    false,
+        ok: false,
         error: 'Your account is not associated with any business. Contact support.',
       });
     }
 
     if (!user.business.isActive) {
       return res.status(403).json({
-        ok:    false,
+        ok: false,
         error: 'Your business account has been suspended. Contact support.',
       });
     }
   }
 
-  // ── 4. Record last login ──────────────────────────────────────────────────
+  // ── 5. Stamp last login + self-heal super-admin active=null ──────────────
+  //
+  // If this was the super-admin's first login after schema migration and
+  // their active was NULL, set it to true now so it doesn't happen again.
   await prisma.user.update({
     where: { id: user.id },
-    data:  { lastLogin: new Date() },
+    data: {
+      lastLogin: new Date(),
+      ...(user.role === 'super-admin' && user.active !== true ? { active: true } : {}),
+    },
   });
 
-  // ── 5. Issue JWT ──────────────────────────────────────────────────────────
-  // contextBusinessId is kept in the token so protected routes that relied
-  // on it (e.g. order lookups) still work — it simply equals businessId now.
+  // ── 6. Issue JWT ──────────────────────────────────────────────────────────
   const token = jwt.sign(
     {
       id:                user.id,
       email:             user.email,
       role:              user.role,
       businessId:        user.businessId,
-      contextBusinessId: user.businessId, // same as businessId in path-based world
+      contextBusinessId: user.businessId, // equals businessId in path-based routing
     },
     process.env.JWT_SECRET,
     { expiresIn: '24h' }
   );
 
-  console.log(`✅ Login: ${user.email} (${user.role})${user.business ? ` — ${user.business.businessName}` : ''}`);
+  console.log(
+    `✅ Login: ${user.email} (${user.role})` +
+    (user.business ? ` — ${user.business.businessName}` : ' — platform admin')
+  );
 
   return res.json({
-    ok:    true,
+    ok: true,
     token,
     user: {
       id:                user.id,
@@ -98,22 +126,22 @@ async function login(req, res) {
 }
 
 // ============================================================================
-// GET CURRENT USER  (/api/auth/me)
+// GET CURRENT USER  /api/auth/me
 // ============================================================================
 async function getCurrentUser(req, res) {
   const user = await prisma.user.findUnique({
     where: { id: req.user.id },
     select: {
-      id:        true,
-      email:     true,
-      role:      true,
-      businessId:true,
-      firstName: true,
-      lastName:  true,
-      phone:     true,
-      active:    true,
-      lastLogin: true,
-      createdAt: true,
+      id:         true,
+      email:      true,
+      role:       true,
+      businessId: true,
+      firstName:  true,
+      lastName:   true,
+      phone:      true,
+      active:     true,
+      lastLogin:  true,
+      createdAt:  true,
       business: {
         select: { id: true, businessName: true, slug: true },
       },
@@ -133,7 +161,6 @@ async function changePassword(req, res) {
     if (!currentPassword || !newPassword) {
       return res.status(400).json({ ok: false, error: 'Current password and new password are required' });
     }
-
     if (newPassword.length < 8) {
       return res.status(400).json({ ok: false, error: 'Password must be at least 8 characters' });
     }
