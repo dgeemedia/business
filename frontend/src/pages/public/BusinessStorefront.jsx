@@ -8,8 +8,11 @@ import {
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
 import toast from 'react-hot-toast';
+// ✅ ADDED: useParams to read :slug from /store/:slug
+import { useParams, useNavigate } from 'react-router-dom';
 import { WaIcon } from '../../components/public/WaIcon';
-import api, { getSubdomain } from '../../services/api';
+// ✅ REMOVED: getSubdomain — no longer needed, slug comes from URL
+import api from '../../services/api';
 import { formatCurrency } from '../../utils/helpers';
 import { T } from '../../utils/translations';
 import { LANGS } from '../../utils/constants';
@@ -23,6 +26,10 @@ import { FloatingContacts } from '../../components/public/FloatingContacts';
 
 const BusinessStorefront = () => {
   useFonts();
+
+  // ✅ Read slug from React Router — works for /store/gee-store in dev AND prod
+  const { slug } = useParams();
+  const navigate  = useNavigate();
 
   const [business, setBusiness] = useState(null);
   const [products, setProducts] = useState([]);
@@ -39,7 +46,7 @@ const BusinessStorefront = () => {
   const [lang, setLang] = useState('en');
   const [langOpen, setLangOpen] = useState(false);
 
-  const searchRef = useRef(null);
+  const searchRef  = useRef(null);
   const productsRef = useRef(null);
   const t = T[lang];
 
@@ -66,39 +73,36 @@ const BusinessStorefront = () => {
     if (showSearch) searchRef.current?.focus();
   }, [showSearch]);
 
-  // Redirect to main domain if subdomain invalid
-  const redirectToMain = () => {
-    if (import.meta.env.DEV) {
-      window.location.href = window.location.origin;
-      return;
-    }
-    const parts = window.location.hostname.split('.');
-    window.location.href =
-      parts.length >= 3
-        ? `${window.location.protocol}//${parts.slice(-2).join('.')}`
-        : window.location.origin;
-  };
+  // ✅ UPDATED: redirectToMain now uses React Router navigate
+  // instead of manipulating window.location based on hostname
+  const redirectToMain = () => navigate('/', { replace: true });
 
-  // Fetch business and products
+  // ✅ UPDATED: Fetch using slug from useParams, not getSubdomain()
+  // Also added slug to the dependency array so if the URL changes the
+  // component re-fetches correctly (e.g. navigating between stores)
   useEffect(() => {
     (async () => {
       try {
         setLoading(true);
-        const sub = getSubdomain();
-        if (!sub) {
+
+        if (!slug) {
           redirectToMain();
           return;
         }
+
         const [b, p] = await Promise.all([
-          api.get(`/api/business/public/${sub}`),
-          api.get(`/api/business/public/${sub}/products`),
+          api.get(`/api/business/public/${slug}`),
+          api.get(`/api/business/public/${slug}/products`),
         ]);
+
         if (!b.data.business) {
           redirectToMain();
           return;
         }
+
         setBusiness(b.data.business);
         setProducts(p.data.products || []);
+
         if (b.data.business.language && T[b.data.business.language]) {
           setLang(b.data.business.language);
         }
@@ -112,7 +116,7 @@ const BusinessStorefront = () => {
         setLoading(false);
       }
     })();
-  }, []);
+  }, [slug]); // ✅ depend on slug — re-runs if slug changes in the URL
 
   // Cart actions
   const addToCart = prod => {
@@ -152,11 +156,11 @@ const BusinessStorefront = () => {
     return matchesCategory && matchesSearch;
   });
 
-  const primary = business?.primaryColor || '#10B981';
-  const secondary = business?.secondaryColor || '#F59E0B';
+  const primary         = business?.primaryColor  || '#10B981';
+  const secondary       = business?.secondaryColor || '#F59E0B';
   const headerTextColor = scrolled ? (darkMode ? '#f0ede8' : '#1a1a1a') : '#fff';
 
-  // Loading / error screens
+  // ── Loading screen ──────────────────────────────────────────────────────────
   if (loading) {
     return (
       <div
@@ -184,6 +188,7 @@ const BusinessStorefront = () => {
     );
   }
 
+  // ── Not found screen ────────────────────────────────────────────────────────
   if (!business) {
     return (
       <div
@@ -197,7 +202,10 @@ const BusinessStorefront = () => {
       >
         <StoreStyles primary="#10B981" secondary="#F59E0B" dark={darkMode} />
         <div className="text-center">
-          <h1 className="sf-display text-3xl font-bold mb-3" style={{ color: darkMode ? '#f0ede8' : '#1a1a1a' }}>
+          <h1
+            className="sf-display text-3xl font-bold mb-3"
+            style={{ color: darkMode ? '#f0ede8' : '#1a1a1a' }}
+          >
             {t.notFound}
           </h1>
           <p className="mb-6" style={{ color: darkMode ? '#555' : '#a8a099' }}>
@@ -211,6 +219,7 @@ const BusinessStorefront = () => {
     );
   }
 
+  // ── Main render ─────────────────────────────────────────────────────────────
   return (
     <div className="sf-root min-h-screen">
       <StoreStyles primary={primary} secondary={secondary} dark={darkMode} />
@@ -220,16 +229,12 @@ const BusinessStorefront = () => {
         className="sticky top-0 z-50 transition-all duration-300"
         style={{
           background: scrolled
-            ? darkMode
-              ? 'rgba(15,15,15,.95)'
-              : 'rgba(255,255,255,.95)'
+            ? darkMode ? 'rgba(15,15,15,.95)' : 'rgba(255,255,255,.95)'
             : 'transparent',
           backdropFilter: scrolled ? 'blur(16px)' : 'none',
           borderBottom: `1px solid ${
             scrolled
-              ? darkMode
-                ? 'rgba(255,255,255,.08)'
-                : 'rgba(0,0,0,.07)'
+              ? darkMode ? 'rgba(255,255,255,.08)' : 'rgba(0,0,0,.07)'
               : 'transparent'
           }`,
           boxShadow: scrolled ? '0 4px 24px rgba(0,0,0,.08)' : 'none',
@@ -260,6 +265,7 @@ const BusinessStorefront = () => {
           </div>
 
           <div className="flex items-center gap-1.5">
+            {/* Search toggle */}
             <button
               onClick={() => setShowSearch(s => !s)}
               className="p-2.5 rounded-xl transition-colors"
@@ -267,15 +273,14 @@ const BusinessStorefront = () => {
                 color: headerTextColor,
                 opacity: 0.8,
                 background: showSearch
-                  ? darkMode
-                    ? 'rgba(255,255,255,.08)'
-                    : 'rgba(0,0,0,.06)'
+                  ? darkMode ? 'rgba(255,255,255,.08)' : 'rgba(0,0,0,.06)'
                   : 'transparent',
               }}
             >
               <Search className="w-5 h-5" />
             </button>
 
+            {/* Language picker */}
             <div className="relative">
               <button
                 onClick={() => setLangOpen(o => !o)}
@@ -302,17 +307,12 @@ const BusinessStorefront = () => {
                     {Object.entries(LANGS).map(([code, l]) => (
                       <button
                         key={code}
-                        onClick={() => {
-                          setLang(code);
-                          setLangOpen(false);
-                        }}
+                        onClick={() => { setLang(code); setLangOpen(false); }}
                         className="w-full px-4 py-3 text-left flex items-center gap-2.5 text-sm transition-colors"
                         style={{
                           background:
                             lang === code
-                              ? darkMode
-                                ? 'rgba(255,255,255,.08)'
-                                : '#f5f3f0'
+                              ? darkMode ? 'rgba(255,255,255,.08)' : '#f5f3f0'
                               : 'transparent',
                           color: darkMode ? '#e0ddd8' : '#374151',
                           fontWeight: lang === code ? 600 : 400,
@@ -327,6 +327,7 @@ const BusinessStorefront = () => {
               </AnimatePresence>
             </div>
 
+            {/* Dark mode toggle */}
             <button
               onClick={() => setDarkMode(d => !d)}
               className="p-2.5 rounded-xl transition-all"
@@ -340,6 +341,7 @@ const BusinessStorefront = () => {
               </motion.div>
             </button>
 
+            {/* Login link */}
             <a
               href="/login"
               className="hidden sm:flex items-center gap-1.5 text-sm px-3 py-2 rounded-xl font-medium"
@@ -348,6 +350,7 @@ const BusinessStorefront = () => {
               <LogIn className="w-4 h-4" /> {t.login}
             </a>
 
+            {/* Cart button */}
             <button
               onClick={() => totalQty > 0 && setCartOpen(true)}
               className="relative flex items-center gap-2 px-4 py-2.5 rounded-xl font-semibold text-sm transition-all"
@@ -355,15 +358,11 @@ const BusinessStorefront = () => {
                 background:
                   totalQty > 0
                     ? primary
-                    : darkMode
-                    ? 'rgba(255,255,255,.08)'
-                    : 'rgba(0,0,0,.07)',
+                    : darkMode ? 'rgba(255,255,255,.08)' : 'rgba(0,0,0,.07)',
                 color:
                   totalQty > 0
                     ? '#fff'
-                    : darkMode
-                    ? 'rgba(255,255,255,.35)'
-                    : '#9A9089',
+                    : darkMode ? 'rgba(255,255,255,.35)' : '#9A9089',
               }}
             >
               <ShoppingCart className="w-[18px] h-[18px]" />
@@ -382,6 +381,7 @@ const BusinessStorefront = () => {
           </div>
         </div>
 
+        {/* Expandable search bar */}
         <AnimatePresence>
           {showSearch && (
             <motion.div
@@ -408,6 +408,7 @@ const BusinessStorefront = () => {
         </AnimatePresence>
       </header>
 
+      {/* HERO */}
       <HeroSection
         business={business}
         primary={primary}
@@ -416,8 +417,12 @@ const BusinessStorefront = () => {
         onShop={() => productsRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' })}
       />
 
+      {/* CATEGORY TABS */}
       {categories.length > 1 && (
-        <div className="sticky z-30 transition-colors" style={{ top: 64, background: darkMode ? '#0f0f0f' : '#F9F7F4' }}>
+        <div
+          className="sticky z-30 transition-colors"
+          style={{ top: 64, background: darkMode ? '#0f0f0f' : '#F9F7F4' }}
+        >
           <div className="max-w-6xl mx-auto px-4 md:px-6">
             <div className="flex gap-2 py-4 overflow-x-auto sf-scroll-hide">
               {categories.map(cat => (
@@ -435,6 +440,7 @@ const BusinessStorefront = () => {
         </div>
       )}
 
+      {/* PRODUCTS */}
       <main ref={productsRef} className="max-w-6xl mx-auto px-4 md:px-6 py-8 pb-32">
         {displayed.length === 0 ? (
           <div className="text-center py-24">
@@ -444,17 +450,19 @@ const BusinessStorefront = () => {
             >
               <Package className="w-9 h-9" style={{ color: darkMode ? 'rgba(255,255,255,.15)' : '#ccc' }} />
             </div>
-            <h3 className="sf-display text-2xl font-semibold mb-2" style={{ color: darkMode ? '#f0ede8' : '#1a1a1a' }}>
+            <h3
+              className="sf-display text-2xl font-semibold mb-2"
+              style={{ color: darkMode ? '#f0ede8' : '#1a1a1a' }}
+            >
               {t.noProducts}
             </h3>
-            <p style={{ color: darkMode ? '#555' : '#a8a099' }}>{searchQuery ? t.trySearch : t.noProductsSub}</p>
+            <p style={{ color: darkMode ? '#555' : '#a8a099' }}>
+              {searchQuery ? t.trySearch : t.noProductsSub}
+            </p>
             {searchQuery && (
               <button
                 className="mt-4 sf-btn-ghost"
-                onClick={() => {
-                  setSearchQuery('');
-                  setSelectedCategory('all');
-                }}
+                onClick={() => { setSearchQuery(''); setSelectedCategory('all'); }}
               >
                 {t.clearFilters}
               </button>
@@ -490,6 +498,7 @@ const BusinessStorefront = () => {
         )}
       </main>
 
+      {/* FOOTER */}
       <footer style={{ background: '#111111', borderTop: '1px solid rgba(255,255,255,.06)' }}>
         <div className="max-w-6xl mx-auto px-4 md:px-6 py-10">
           <div className="flex flex-col md:flex-row justify-between gap-8">
@@ -522,10 +531,10 @@ const BusinessStorefront = () => {
             <div className="flex flex-col items-start md:items-end gap-3">
               <div className="flex gap-2 flex-wrap">
                 {[
-                  [business.facebookUrl, Facebook],
+                  [business.facebookUrl,  Facebook],
                   [business.instagramUrl, Instagram],
-                  [business.twitterUrl, Twitter],
-                  [business.youtubeUrl, Youtube],
+                  [business.twitterUrl,   Twitter],
+                  [business.youtubeUrl,   Youtube],
                 ]
                   .filter(([url]) => url)
                   .map(([url, Icon], i) => (
@@ -575,6 +584,7 @@ const BusinessStorefront = () => {
         </div>
       </footer>
 
+      {/* FLOATING CART BUTTON (mobile) */}
       <AnimatePresence>
         {totalQty > 0 && !cartOpen && !checkoutOpen && (
           <motion.button
@@ -590,12 +600,16 @@ const BusinessStorefront = () => {
             <ShoppingCart className="w-5 h-5" />
             {t.viewCart} · {totalQty}
             <span className="opacity-75 font-normal text-sm">
-              {formatCurrency(cart.reduce((s, i) => s + i.price * i.quantity, 0), business.currency || 'NGN')}
+              {formatCurrency(
+                cart.reduce((s, i) => s + i.price * i.quantity, 0),
+                business.currency || 'NGN'
+              )}
             </span>
           </motion.button>
         )}
       </AnimatePresence>
 
+      {/* SCROLL TO TOP */}
       <AnimatePresence>
         {showTop && (
           <motion.button
@@ -614,8 +628,10 @@ const BusinessStorefront = () => {
         )}
       </AnimatePresence>
 
+      {/* FLOATING CONTACTS */}
       <FloatingContacts business={business} dark={darkMode} t={t} />
 
+      {/* CART PANEL */}
       <AnimatePresence>
         {cartOpen && (
           <CartPanel
@@ -635,6 +651,7 @@ const BusinessStorefront = () => {
         )}
       </AnimatePresence>
 
+      {/* CHECKOUT MODAL */}
       <AnimatePresence>
         {checkoutOpen && (
           <CheckoutModal

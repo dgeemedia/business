@@ -2,9 +2,6 @@
 import axios from 'axios';
 import toast from 'react-hot-toast';
 
-// ✅ KEY FIX: In development, use '' (relative) so requests go through
-// Vite's proxy → no CORS issues from ANY subdomain (gee-store.localhost:3000, etc.)
-// In production, use the absolute API URL.
 const API_URL = import.meta.env.DEV
   ? ''
   : (import.meta.env.VITE_API_URL || '');
@@ -23,13 +20,9 @@ api.interceptors.request.use(
     if (token) {
       config.headers.Authorization = `Bearer ${token}`;
     }
-
-    // Pass subdomain to backend so it knows which business context to use
-    const subdomain = getSubdomain();
-    if (subdomain && subdomain !== 'www') {
-      config.headers['X-Business-Subdomain'] = subdomain;
-    }
-
+    // ✅ REMOVED: X-Business-Subdomain header — no longer needed.
+    // Storefront slug now comes from the URL path (/store/:slug),
+    // and backend reads it from req.params.slug directly.
     return config;
   },
   (error) => Promise.reject(error)
@@ -83,17 +76,15 @@ api.interceptors.response.use(
 
 // ============================================================================
 // SUBDOMAIN DETECTION
+// ✅ Kept for any legacy use but no longer called by the storefront or App.jsx
 // ============================================================================
 export const getSubdomain = () => {
   const hostname = window.location.hostname;
   if (!hostname) return null;
 
-  // --- Localhost (dev) ---
   if (hostname.includes('localhost')) {
     const parts = hostname.split('.');
-    // "localhost"              → no subdomain
     if (parts.length === 1) return null;
-    // "gee-store.localhost"   → subdomain = "gee-store"
     if (parts.length === 2 && parts[1] === 'localhost') {
       const sub = parts[0].toLowerCase();
       return ['www', 'admin', 'app', 'api'].includes(sub) ? null : sub;
@@ -101,13 +92,9 @@ export const getSubdomain = () => {
     return null;
   }
 
-  // --- IP address → ignore ---
   if (/^\d+\.\d+\.\d+\.\d+$/.test(hostname)) return null;
-
-  // --- Vercel preview → ignore ---
   if (hostname.endsWith('vercel.app')) return null;
 
-  // --- Production ---
   const ROOT_DOMAIN = import.meta.env.VITE_ROOT_DOMAIN || 'mypadifood.com';
   if (hostname.endsWith(ROOT_DOMAIN)) {
     const parts = hostname.split('.');
@@ -121,14 +108,19 @@ export const getSubdomain = () => {
   return null;
 };
 
-// Build a full storefront URL for a given slug
+// ============================================================================
+// BUILD STORE URL
+// ✅ NOW PATH-BASED: mypadifood.com/store/gee-store (works on free tier)
+// Previously: gee-store.mypadifood.com (required wildcard DNS / paid tier)
+// ============================================================================
 export const buildSubdomainUrl = (slug) => {
   if (import.meta.env.DEV) {
-    const port = window.location.port || '3000';
-    return `http://${slug}.localhost:${port}`;
+    // Dev: http://localhost:3000/store/gee-store
+    return `http://localhost:${window.location.port || 3000}/store/${slug}`;
   }
+  // Prod: https://www.mypadifood.com/store/gee-store
   const ROOT_DOMAIN = import.meta.env.VITE_ROOT_DOMAIN || 'mypadifood.com';
-  return `https://${slug}.${ROOT_DOMAIN}`;
+  return `https://www.${ROOT_DOMAIN}/store/${slug}`;
 };
 
 export default api;
