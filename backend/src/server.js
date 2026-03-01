@@ -13,30 +13,34 @@ const onboardingRoutes = require('./routes/onboarding');
 const app = express();
 
 // ============================================================================
-// CORS CONFIGURATION
+// CORS CONFIGURATION (PATH-BASED SAFE)
 // Supports:
-//   DEV  → http://localhost:*  and  http://*.localhost:*
-//   PROD → https://mypadifood.com  and  https://*.mypadifood.com
+//   DEV      → http://localhost:*
+//   PROD     → https://mypadifood.com
+//   VERCEL   → https://*.vercel.app
 // ============================================================================
+
 const PROD_DOMAIN = 'mypadifood.com';
 
 const allowedOriginPatterns = [
-  // Dev: plain localhost (any port)
+  // Dev
   /^http:\/\/localhost(:\d+)?$/,
-  // Dev: any *.localhost subdomain (any port) — e.g. gee-store.localhost:3000
-  /^http:\/\/[a-z0-9-]+\.localhost(:\d+)?$/,
-  // Prod: root domain (www or bare)
-  /^https:\/\/(www\.)?mypadifood\.com$/,
-  // Prod: any subdomain — e.g. gee-store.mypadifood.com
-  /^https:\/\/[a-z0-9-]+\.mypadifood\.com$/,
+  /^http:\/\/127\.0\.0\.1(:\d+)?$/,
+
+  // Production root domain (www or bare)
+  new RegExp(`^https:\\/\\/(www\\.)?${PROD_DOMAIN.replace('.', '\\.')}$`),
+
+  // ✅ Allow ALL Vercel deployments (preview + production)
+  /^https:\/\/.*\.vercel\.app$/,
 ];
 
 app.use(cors({
   origin: function (origin, callback) {
-    // Allow requests with no Origin header (Postman, curl, server-to-server)
     if (!origin) return callback(null, true);
 
-    const isAllowed = allowedOriginPatterns.some(pattern => pattern.test(origin));
+    const isAllowed = allowedOriginPatterns.some((pattern) =>
+      pattern.test(origin)
+    );
 
     if (isAllowed) {
       return callback(null, true);
@@ -45,15 +49,13 @@ app.use(cors({
     console.warn(`🚫 CORS blocked origin: ${origin}`);
     return callback(new Error(`CORS policy: origin "${origin}" is not allowed`));
   },
-  credentials: true,          // Required for Authorization / Cookie headers
+  credentials: true,
   methods: ['GET', 'POST', 'PUT', 'PATCH', 'DELETE', 'OPTIONS'],
   allowedHeaders: [
     'Content-Type',
     'Authorization',
-    'X-Business-Subdomain',   // Used by frontend api.js to pass slug through proxy
     'X-Requested-With',
   ],
-  // Cache preflight response for 10 minutes
   optionsSuccessStatus: 204,
   maxAge: 600,
 }));
