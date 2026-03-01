@@ -20,9 +20,6 @@ api.interceptors.request.use(
     if (token) {
       config.headers.Authorization = `Bearer ${token}`;
     }
-    // ✅ REMOVED: X-Business-Subdomain header — no longer needed.
-    // Storefront slug now comes from the URL path (/store/:slug),
-    // and backend reads it from req.params.slug directly.
     return config;
   },
   (error) => Promise.reject(error)
@@ -44,12 +41,27 @@ api.interceptors.response.use(
           }
           toast.error('Session expired. Please login again.');
           break;
+
         case 403:
-          toast.error('You do not have permission to perform this action.');
+          // ✅ Subscription/trial expiry — redirect to subscription page
+          if (
+            data?.code === 'TRIAL_EXPIRED' ||
+            data?.code === 'SUBSCRIPTION_EXPIRED' ||
+            data?.code === 'SUSPENDED'
+          ) {
+            toast.error(data.error || 'Your subscription has expired.');
+            if (window.location.pathname !== '/subscription') {
+              window.location.href = '/subscription';
+            }
+          } else {
+            toast.error('You do not have permission to perform this action.');
+          }
           break;
+
         case 404:
           // Don't toast on 404 — BusinessStorefront handles this with a redirect
           break;
+
         case 422:
           if (data.errors) {
             Object.values(data.errors).forEach((err) => toast.error(err));
@@ -57,12 +69,15 @@ api.interceptors.response.use(
             toast.error(data.error || 'Validation error.');
           }
           break;
+
         case 500:
           toast.error('Server error. Please try again later.');
           break;
+
         case 503:
           // Business suspended — handled by the page, not a toast
           break;
+
         default:
           toast.error(data.error || 'An error occurred.');
       }
@@ -115,10 +130,8 @@ export const getSubdomain = () => {
 // ============================================================================
 export const buildSubdomainUrl = (slug) => {
   if (import.meta.env.DEV) {
-    // Dev: http://localhost:3000/store/gee-store
     return `http://localhost:${window.location.port || 3000}/store/${slug}`;
   }
-  // Prod: https://www.mypadifood.com/store/gee-store
   const ROOT_DOMAIN = import.meta.env.VITE_ROOT_DOMAIN || 'mypadifood.com';
   return `https://www.${ROOT_DOMAIN}/store/${slug}`;
 };

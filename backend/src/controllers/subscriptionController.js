@@ -23,14 +23,14 @@ function getSubscriptionStatus(business) {
     const daysRemaining = Math.ceil((new Date(business.trialEndsAt) - now) / (1000 * 60 * 60 * 24));
     return daysRemaining <= 0
       ? { status: 'trial_expired', daysRemaining: 0 }
-      : { status: 'trial_active', daysRemaining };
+      : { status: 'trial_active',  daysRemaining };
   }
 
   if (business.subscriptionExpiry) {
     const daysRemaining = Math.ceil((new Date(business.subscriptionExpiry) - now) / (1000 * 60 * 60 * 24));
     if (daysRemaining <= 0) return { status: 'expired',        daysRemaining: 0 };
     if (daysRemaining <= 7) return { status: 'expiring_soon', daysRemaining };
-    return { status: 'active', daysRemaining };
+    return                         { status: 'active',         daysRemaining };
   }
 
   return { status: 'none', daysRemaining: null };
@@ -68,9 +68,7 @@ async function startFreeTrial(req, res) {
     },
   });
 
-  // Notify the business that their trial has started
   await notify.trialStarted(businessId, trialEnd);
-
   console.log(`🎁 Started 14-day trial for: ${business.businessName} (ends ${trialEnd.toDateString()})`);
 
   res.json({ ok: true, message: '14-day free trial started', business: updated, trialEndsAt: trialEnd });
@@ -121,16 +119,14 @@ async function updateSubscription(req, res) {
 
   const updated = await prisma.business.update({ where: { id: businessId }, data: updateData });
 
-  // Notify the business of the subscription change
   await notify.subscription(businessId, plan, updateData.subscriptionExpiry);
-
   console.log(`💳 Updated subscription for ${business.businessName}: ${plan} until ${updateData.subscriptionExpiry?.toDateString() || 'N/A'}`);
 
   res.json({
-    ok: true,
+    ok:      true,
     message: 'Subscription updated successfully',
     business: updated,
-    status: getSubscriptionStatus(updated),
+    status:   getSubscriptionStatus(updated),
   });
 }
 
@@ -159,11 +155,11 @@ async function getSubscriptionStatusDetails(req, res) {
   const status = getSubscriptionStatus(business);
 
   res.json({
-    ok: true,
+    ok:           true,
     business,
     status,
     canStartTrial: !business.trialStartDate,
-    needsPayment: status.status === 'expired' || status.status === 'trial_expired',
+    needsPayment:  status.status === 'expired' || status.status === 'trial_expired',
   });
 }
 
@@ -178,15 +174,15 @@ async function checkAndSuspendExpired() {
     const [expiredSubscriptions, expiredTrials] = await Promise.all([
       prisma.business.findMany({
         where: {
-          isActive: true,
+          isActive:           true,
           subscriptionExpiry: { lt: now },
-          subscriptionPlan: { in: ['monthly', 'annual'] },
+          subscriptionPlan:   { in: ['monthly', 'annual'] },
         },
       }),
       prisma.business.findMany({
         where: {
-          isActive: true,
-          trialEndsAt: { lt: now },
+          isActive:         true,
+          trialEndsAt:      { lt: now },
           subscriptionPlan: 'free_trial',
         },
       }),
@@ -210,10 +206,9 @@ async function checkAndSuspendExpired() {
 
       await prisma.business.update({
         where: { id: business.id },
-        data: { isActive: false, suspendedAt: now, suspensionReason: reason },
+        data:  { isActive: false, suspendedAt: now, suspensionReason: reason },
       });
 
-      // Notify the business it has been suspended
       await notify.businessSuspended(business.id, reason);
 
       suspendedBusinesses.push({ id: business.id, name: business.businessName, slug: business.slug, reason });
@@ -228,7 +223,9 @@ async function checkAndSuspendExpired() {
 }
 
 // ============================================================================
-// GET EXPIRING SUBSCRIPTIONS (for dashboard alerts)
+// GET EXPIRING SUBSCRIPTIONS (for super-admin dashboard)
+// ✅ FIXED: now includes expired trials and expired paid subs that cron
+//    hasn't processed yet, so super-admin sees them immediately.
 // ============================================================================
 async function getExpiringSubscriptions(req, res) {
   if (req.user.role !== 'super-admin') {
@@ -240,42 +237,97 @@ async function getExpiringSubscriptions(req, res) {
   const thresholdDate = new Date(now);
   thresholdDate.setDate(thresholdDate.getDate() + daysThreshold);
 
-  const expiring = await prisma.business.findMany({
-    where: {
-      isActive: true,
-      subscriptionExpiry: { gte: now, lte: thresholdDate },
-    },
-    orderBy: { subscriptionExpiry: 'asc' },
-    include: { _count: { select: { users: true, products: true, orders: true } } },
-  });
+  const [expiringSoon, expiredTrials, expiredSubs] = await Promise.all([
+    // Paid plans expiring within threshold (still active)
+    prisma.business.findMany({
+      where: {
+        isActive:           true,
+        subscriptionPlan:   { in: ['monthly', 'annual'] },
+        subscriptionExpiry: { gte: now, lte: thresholdDate },
+      },
+      orderBy: { subscriptionExpiry: 'asc' },
+      include: { _count: { select: { users: true, products: true, orders: true } } },
+    }),
+    // ✅ Trials already expired but cron hasn't suspended yet
+    prisma.business.findMany({
+      where: {
+        isActive:         true,
+        subscriptionPlan: 'free_trial',
+        trialEndsAt:      { lt: now },
+      },
+      include: { _count: { select: { users: true, products: true, orders: true } } },
+    }),
+    // ✅ Paid subs already expired but cron hasn't suspended yet
+    prisma.business.findMany({
+      where: {
+        isActive:           true,
+        subscriptionPlan:   { in: ['monthly', 'annual'] },
+        subscriptionExpiry: { lt: now },
+      },
+      include: { _count: { select: { users: true, products: true, orders: true } } },
+    }),
+  ]);
 
-  const withStatus = expiring.map(business => ({ ...business, status: getSubscriptionStatus(business) }));
+  // Merge and deduplicate by id
+  const seen   = new Set();
+  const unique = [...expiringSoon, ...expiredTrials, ...expiredSubs].filter(b =>
+    seen.has(b.id) ? false : seen.add(b.id)
+  );
+
+  const withStatus = unique.map(b => ({ ...b, status: getSubscriptionStatus(b) }));
+
+  // Sort: expired first, then expiring soonest
+  withStatus.sort((a, b) => {
+    const order = { trial_expired: 0, expired: 1, expiring_soon: 2, trial_active: 3, active: 4, none: 5 };
+    return (order[a.status.status] ?? 9) - (order[b.status.status] ?? 9);
+  });
 
   res.json({ ok: true, count: withStatus.length, businesses: withStatus });
 }
 
 // ============================================================================
 // NOTIFY EXPIRING SOON (called from cron — 7d / 3d / 1d)
+// ✅ FIXED: also checks trials expiring soon, not just paid plans
 // ============================================================================
 async function notifyExpiringSoon() {
   const now  = new Date();
   const soon = new Date(now);
   soon.setDate(soon.getDate() + 7);
 
-  const expiring = await prisma.business.findMany({
-    where: {
-      isActive: true,
-      subscriptionExpiry: { gte: now, lte: soon },
-    },
-  });
+  const [expiringPaid, expiringTrials] = await Promise.all([
+    prisma.business.findMany({
+      where: {
+        isActive:           true,
+        subscriptionPlan:   { in: ['monthly', 'annual'] },
+        subscriptionExpiry: { gte: now, lte: soon },
+      },
+    }),
+    prisma.business.findMany({
+      where: {
+        isActive:         true,
+        subscriptionPlan: 'free_trial',
+        trialEndsAt:      { gte: now, lte: soon },
+      },
+    }),
+  ]);
 
-  for (const biz of expiring) {
+  for (const biz of expiringPaid) {
     const daysLeft = Math.ceil(
       (new Date(biz.subscriptionExpiry) - now) / (1000 * 60 * 60 * 24)
     );
     if ([7, 3, 1].includes(daysLeft)) {
       await notify.subscriptionExpiringSoon(biz.id, daysLeft);
       console.log(`⚠️  Expiry warning sent to ${biz.businessName} — ${daysLeft}d left`);
+    }
+  }
+
+  for (const biz of expiringTrials) {
+    const daysLeft = Math.ceil(
+      (new Date(biz.trialEndsAt) - now) / (1000 * 60 * 60 * 24)
+    );
+    if ([7, 3, 1].includes(daysLeft)) {
+      await notify.subscriptionExpiringSoon(biz.id, daysLeft);
+      console.log(`⚠️  Trial expiry warning sent to ${biz.businessName} — ${daysLeft}d left`);
     }
   }
 }
@@ -293,7 +345,6 @@ async function bulkRenewSubscriptions(req, res) {
   if (!businessIds || !Array.isArray(businessIds) || businessIds.length === 0) {
     return res.status(400).json({ error: 'businessIds array is required' });
   }
-
   if (!['monthly', 'annual'].includes(plan)) {
     return res.status(400).json({ error: 'Invalid plan' });
   }
@@ -322,9 +373,7 @@ async function bulkRenewSubscriptions(req, res) {
         },
       });
 
-      // Notify each renewed business
       await notify.subscription(id, plan, expiryDate);
-
       renewed.push({ id, businessName: business.businessName, expiryDate });
     } catch (error) {
       errors.push({ id, error: error.message });

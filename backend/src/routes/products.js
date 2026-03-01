@@ -11,26 +11,29 @@ const {
   deleteProductImage,
   reorderProductImages,
 } = require('../controllers/productController');
-const { authMiddleware, requireAdmin } = require('../middleware/auth');
+const {
+  authMiddleware,
+  requireAdmin,
+  requireActiveSubscription,
+} = require('../middleware/auth');
 const { asyncHandler } = require('../middleware/errorHandler');
 
 const router = express.Router();
 
-// ✅ FIX: GET / needs authMiddleware so req.user.businessId is available
-// (dashboard calls this — must know which business to scope products to)
-router.get('/',    authMiddleware, asyncHandler(getAllProducts));
-router.get('/:id', authMiddleware, asyncHandler(getProductById));
+// ── Read (any authenticated user of an active business) ──────────────────────
+router.get('/',    authMiddleware, requireActiveSubscription, asyncHandler(getAllProducts));
+router.get('/:id', authMiddleware, requireActiveSubscription, asyncHandler(getProductById));
 
-// Admin only — create / update / delete
-router.post('/',      authMiddleware, requireAdmin, asyncHandler(createProduct));
-router.put('/:id',    authMiddleware, requireAdmin, asyncHandler(updateProduct));
-router.delete('/:id', authMiddleware, requireAdmin, asyncHandler(deleteProduct));
+// ── Write (admin or super-admin of an active business) ───────────────────────
+router.post('/',      authMiddleware, requireActiveSubscription, requireAdmin, asyncHandler(createProduct));
+router.put('/:id',    authMiddleware, requireActiveSubscription, requireAdmin, asyncHandler(updateProduct));
+router.delete('/:id', authMiddleware, requireActiveSubscription, requireAdmin, asyncHandler(deleteProduct));
 
-router.patch('/:id/toggle', authMiddleware, requireAdmin, asyncHandler(toggleAvailability));
+router.patch('/:id/toggle', authMiddleware, requireActiveSubscription, requireAdmin, asyncHandler(toggleAvailability));
 
-// Image management
-router.post('/:productId/images',        authMiddleware, requireAdmin, asyncHandler(addProductImage));
-router.delete('/images/:imageId',        authMiddleware, requireAdmin, asyncHandler(deleteProductImage));
-router.put('/:productId/images/reorder', authMiddleware, requireAdmin, asyncHandler(reorderProductImages));
+// ── Image management ──────────────────────────────────────────────────────────
+router.post('/:productId/images',        authMiddleware, requireActiveSubscription, requireAdmin, asyncHandler(addProductImage));
+router.delete('/images/:imageId',        authMiddleware, requireActiveSubscription, requireAdmin, asyncHandler(deleteProductImage));
+router.put('/:productId/images/reorder', authMiddleware, requireActiveSubscription, requireAdmin, asyncHandler(reorderProductImages));
 
 module.exports = router;
