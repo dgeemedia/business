@@ -1,4 +1,4 @@
-// backend/src/middleware/auth.js (UPDATED)
+// backend/src/middleware/auth.js
 const jwt = require('jsonwebtoken');
 
 function authMiddleware(req, res, next) {
@@ -11,7 +11,11 @@ function authMiddleware(req, res, next) {
   try {
     const token = header.split(' ')[1];
     const decoded = jwt.verify(token, process.env.JWT_SECRET);
-    req.user = decoded;
+    
+    // ✅ Normalize role to lowercase so all checks work consistently
+    req.user = { ...decoded, role: decoded.role?.toLowerCase() };
+    req.businessId = decoded.businessId || null;
+    
     next();
   } catch {
     return res.status(401).json({ error: 'Invalid token' });
@@ -19,21 +23,20 @@ function authMiddleware(req, res, next) {
 }
 
 function requireSuperAdmin(req, res, next) {
-  if (req.user.role !== 'super-admin') {
+  if (req.user.role?.toLowerCase() !== 'super-admin') {
     return res.status(403).json({ error: 'Forbidden: Super admin access required' });
   }
   next();
 }
 
-// NEW: Middleware to allow both super-admin and admin
 function requireAdmin(req, res, next) {
-  if (req.user.role !== 'super-admin' && req.user.role !== 'admin') {
+  const role = req.user.role?.toLowerCase();
+  if (role !== 'super-admin' && role !== 'admin') {
     return res.status(403).json({ error: 'Forbidden: Admin access required' });
   }
   next();
 }
 
-// NEW: Middleware to prevent staff from accessing certain routes
 function preventStaff(req, res, next) {
   if (req.user.role === 'staff') {
     return res.status(403).json({ error: 'Forbidden: Staff cannot access this resource' });

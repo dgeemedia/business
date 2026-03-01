@@ -1,45 +1,36 @@
 // backend/src/middleware/upload.js
 const multer = require('multer');
+const { CloudinaryStorage } = require('multer-storage-cloudinary');
+const cloudinary = require('cloudinary').v2;
 const path = require('path');
-const fs = require('fs');
 
-// Ensure uploads directory exists
-const uploadsDir = path.join(__dirname, '../../uploads');
-if (!fs.existsSync(uploadsDir)) {
-  fs.mkdirSync(uploadsDir, { recursive: true });
-  console.log('✅ Created uploads directory');
-}
-
-// Configure storage
-const storage = multer.diskStorage({
-  destination: (req, file, cb) => {
-    cb(null, uploadsDir);
-  },
-  filename: (req, file, cb) => {
-    const uniqueSuffix = Date.now() + '-' + Math.round(Math.random() * 1E9);
-    // Use different prefixes for different upload types
-    const prefix = file.fieldname === 'image' ? 'logo' : 'product';
-    cb(null, `${prefix}-${uniqueSuffix}${path.extname(file.originalname)}`);
-  }
+cloudinary.config({
+  cloud_name: process.env.CLOUDINARY_CLOUD_NAME,
+  api_key:    process.env.CLOUDINARY_API_KEY,
+  api_secret: process.env.CLOUDINARY_API_SECRET,
 });
 
-// File filter
+const storage = new CloudinaryStorage({
+  cloudinary,
+  params: (req, file) => ({
+    folder: process.env.CLOUDINARY_FOLDER || 'mypadifood',
+    allowed_formats: ['jpg', 'jpeg', 'png', 'gif', 'webp'],
+    public_id: `${file.fieldname === 'image' ? 'logo' : 'product'}-${Date.now()}`,
+  }),
+});
+
 const fileFilter = (req, file, cb) => {
   const allowedTypes = /jpeg|jpg|png|gif|webp/;
   const extname = allowedTypes.test(path.extname(file.originalname).toLowerCase());
   const mimetype = allowedTypes.test(file.mimetype);
-
-  if (mimetype && extname) {
-    return cb(null, true);
-  } else {
-    cb(new Error('Only image files are allowed (jpeg, jpg, png, gif, webp)'));
-  }
+  if (mimetype && extname) return cb(null, true);
+  cb(new Error('Only image files are allowed (jpeg, jpg, png, gif, webp)'));
 };
 
 const upload = multer({
   storage,
-  limits: { fileSize: 5 * 1024 * 1024 }, // 5MB limit
-  fileFilter
+  limits: { fileSize: 5 * 1024 * 1024 },
+  fileFilter,
 });
 
 module.exports = upload;

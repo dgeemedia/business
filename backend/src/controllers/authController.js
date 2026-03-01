@@ -97,7 +97,7 @@ async function login(req, res) {
     {
       id:                user.id,
       email:             user.email,
-      role:              user.role,
+      role:              user.role.toLowerCase(),
       businessId:        user.businessId,
       contextBusinessId: user.businessId, // equals businessId in path-based routing
     },
@@ -116,7 +116,7 @@ async function login(req, res) {
     user: {
       id:                user.id,
       email:             user.email,
-      role:              user.role,
+      role:              user.role, 
       businessId:        user.businessId,
       contextBusinessId: user.businessId,
       firstName:         user.firstName,

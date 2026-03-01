@@ -13,6 +13,7 @@ function resolveBusinessId(req) {
 // ============================================================================
 async function getAllProducts(req, res) {
   const businessId = resolveBusinessId(req);
+
   if (!businessId) return res.status(400).json({ error: 'Business context required' });
 
   const products = await prisma.product.findMany({

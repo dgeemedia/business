@@ -68,9 +68,6 @@ app.use(express.json());
 // 🔥 CRITICAL: Extract subdomain/business context BEFORE routes
 app.use(extractSubdomain);
 
-// Serve uploaded files statically
-app.use('/uploads', express.static(path.join(__dirname, '../uploads')));
-
 // ============================================================================
 // ROUTES
 // ============================================================================
