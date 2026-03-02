@@ -292,6 +292,19 @@ const Login = () => {
               </a>
             </p>
           </div>
+
+          {/* Back to home */}
+          <div className="mt-4 text-center">
+            <Link
+              to="/"
+              className={`text-sm font-medium transition-colors ${
+                darkMode ? 'text-gray-400 hover:text-white' : 'text-gray-500 hover:text-gray-800'
+              }`}
+            >
+              ← Back to MyPadiBusiness
+            </Link>
+          </div>
+
         </motion.div>
 
         {/* Footer */}

@@ -8,7 +8,7 @@ import {
 } from 'lucide-react';
 import { motion } from 'framer-motion';
 import { Card, Badge, LoadingSpinner, Button } from '../components/shared';
-import { PaymentModal } from '../components/shared/PaymentModal';  // ✅ real payment modal
+import { PaymentModal } from '../components/shared/PaymentModal';
 import orderService from '../services/orderService';
 import api from '../services/api';
 import useBusinessStore from '../stores/businessStore';
@@ -109,9 +109,9 @@ const Dashboard = () => {
   const [loading,      setLoading]      = useState(true);
 
   // Subscription state
-  const [subscription,       setSubscription]       = useState(null);
-  const [subLoading,         setSubLoading]         = useState(true);
-  const [paymentModalOpen,   setPaymentModalOpen]   = useState(false); // ✅ renamed to match PaymentModal pattern
+  const [subscription,     setSubscription]     = useState(null);
+  const [subLoading,       setSubLoading]       = useState(true);
+  const [paymentModalOpen, setPaymentModalOpen] = useState(false);
 
   // ── Fetch stats ─────────────────────────────────────────────────────────
   useEffect(() => {
@@ -165,31 +165,39 @@ const Dashboard = () => {
   const expiryDate = isTrial ? biz.trialEndsAt : biz.subscriptionExpiry;
 
   const subStatusConfig = {
-    trial_active:  { label: 'Free Trial',    variant: 'info',    icon: Zap         },
-    active:        { label: 'Active',         variant: 'success', icon: CheckCircle },
-    expiring_soon: { label: 'Expiring Soon',  variant: 'warning', icon: AlertCircle },
-    trial_expired: { label: 'Trial Expired',  variant: 'danger',  icon: XCircle     },
-    expired:       { label: 'Expired',         variant: 'danger',  icon: XCircle     },
-    none:          { label: 'No Plan',         variant: 'gray',    icon: CreditCard  },
+    trial_active:  { label: 'Free Trial',   variant: 'info',    icon: Zap         },
+    active:        { label: 'Active',        variant: 'success', icon: CheckCircle },
+    expiring_soon: { label: 'Expiring Soon', variant: 'warning', icon: AlertCircle },
+    trial_expired: { label: 'Trial Expired', variant: 'danger',  icon: XCircle     },
+    expired:       { label: 'Expired',       variant: 'danger',  icon: XCircle     },
+    none:          { label: 'No Plan',       variant: 'gray',    icon: CreditCard  },
   };
   const subInfo  = subStatusConfig[subStatus.status] || subStatusConfig.none;
   const SubIcon  = subInfo.icon;
   const showRenewBanner = ['trial_expired', 'expired', 'expiring_soon'].includes(subStatus.status);
 
-  // ── Stat cards ──────────────────────────────────────────────────────────
+  // ── Stat cards — revenue today / year / orders / products ──────────────
   const statCards = [
     {
-      title:   'Total Revenue',
-      value:   formatCurrency(stats?.totalRevenue || 0),
-      sub:     `${formatCurrency(stats?.recentRevenue || 0)} last 30d`,
+      title:   'Revenue Today',
+      value:   formatCurrency(stats?.revenueToday || 0),
+      sub:     `${formatCurrency(stats?.revenueThisMonth || 0)} this month`,
       icon:    DollarSign,
       color:   'text-green-600',
       bgColor: 'bg-green-100',
     },
     {
+      title:   'Revenue This Year',
+      value:   formatCurrency(stats?.revenueThisYear || 0),
+      sub:     `Total ever: ${formatCurrency(stats?.totalRevenue || 0)}`,
+      icon:    TrendingUp,
+      color:   'text-emerald-600',
+      bgColor: 'bg-emerald-100',
+    },
+    {
       title:   'Total Orders',
       value:   stats?.totalOrders || 0,
-      sub:     `${stats?.pendingOrders || 0} pending`,
+      sub:     `${stats?.pendingOrders || 0} pending · ${stats?.deliveredOrders || 0} delivered`,
       icon:    ShoppingBag,
       color:   'text-blue-600',
       bgColor: 'bg-blue-100',
@@ -197,30 +205,22 @@ const Dashboard = () => {
     {
       title:   'Active Products',
       value:   stats?.activeProducts || 0,
-      sub:     'Available in store',
+      sub:     `${stats?.totalCustomers || 0} unique customers`,
       icon:    Package,
       color:   'text-purple-600',
       bgColor: 'bg-purple-100',
-    },
-    {
-      title:   'Customers',
-      value:   stats?.totalCustomers || 0,
-      sub:     `${stats?.deliveredOrders || 0} orders delivered`,
-      icon:    Users,
-      color:   'text-orange-600',
-      bgColor: 'bg-orange-100',
     },
   ];
 
   const getStatusBadge = (status) => {
     const cfg = {
-      PENDING:          { variant: 'warning', icon: Clock         },
-      CONFIRMED:        { variant: 'info',    icon: CheckCircle   },
-      PREPARING:        { variant: 'info',    icon: Package       },
-      READY:            { variant: 'success', icon: CheckCircle   },
-      OUT_FOR_DELIVERY: { variant: 'info',    icon: Package       },
-      DELIVERED:        { variant: 'success', icon: CheckCircle   },
-      CANCELLED:        { variant: 'danger',  icon: XCircle       },
+      PENDING:          { variant: 'warning', icon: Clock        },
+      CONFIRMED:        { variant: 'info',    icon: CheckCircle  },
+      PREPARING:        { variant: 'info',    icon: Package      },
+      READY:            { variant: 'success', icon: CheckCircle  },
+      OUT_FOR_DELIVERY: { variant: 'info',    icon: Package      },
+      DELIVERED:        { variant: 'success', icon: CheckCircle  },
+      CANCELLED:        { variant: 'danger',  icon: XCircle      },
     };
     const c = cfg[status] || { variant: 'gray' };
     return <Badge variant={c.variant} icon={c.icon}>{status}</Badge>;
@@ -382,12 +382,12 @@ const Dashboard = () => {
                   </div>
                 )}
 
-                {/* Stats pills */}
+                {/* Stats pills — revenue today / month / year + delivered */}
                 <div className="grid grid-cols-2 gap-2 mt-4">
                   {[
-                    { label: 'Orders',    val: stats?.totalOrders    || 0 },
-                    { label: 'Customers', val: stats?.totalCustomers || 0 },
-                    { label: 'Revenue',   val: formatCurrency(stats?.totalRevenue || 0) },
+                    { label: 'Today',     val: formatCurrency(stats?.revenueToday    || 0) },
+                    { label: 'Month',     val: formatCurrency(stats?.revenueThisMonth || 0) },
+                    { label: 'Year',      val: formatCurrency(stats?.revenueThisYear  || 0) },
                     { label: 'Delivered', val: stats?.deliveredOrders || 0 },
                   ].map(({ label, val }) => (
                     <div key={label} className="p-2.5 bg-gray-50 rounded-lg text-center">
@@ -413,14 +413,14 @@ const Dashboard = () => {
         </div>
       </div>
 
-      {/* ── Payment Modal (real gateway + bank transfer fallback) ─────────── */}
+      {/* ── Payment Modal ─────────────────────────────────────────────────── */}
       <PaymentModal
         isOpen={paymentModalOpen}
         onClose={() => setPaymentModalOpen(false)}
         business={biz}
         onPaymentSuccess={() => {
           setPaymentModalOpen(false);
-          fetchSubscription(); // ✅ refreshes subscription status after successful payment
+          fetchSubscription();
         }}
       />
     </div>

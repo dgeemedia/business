@@ -9,7 +9,7 @@ import { motion } from 'framer-motion';
 import { Link, useNavigate } from 'react-router-dom';
 import toast from 'react-hot-toast';
 import { Card, Button, Badge, Modal, LoadingSpinner, EmptyState, Input } from '../../components/shared';
-import api from '../../services/api';
+import api, { buildSubdomainUrl } from '../../services/api';
 import { formatDate, daysUntil, isExpired } from '../../utils/helpers';
 import BusinessCreatedSuccess from '../../components/super-admin/BusinessCreatedSuccess';
 
@@ -79,36 +79,43 @@ const BUSINESS_CATEGORIES = [
   { value: 'other',              label: '🏪  Other' },
 ];
 
-const ROOT_DOMAIN = import.meta.env.VITE_ROOT_DOMAIN || 'yourdomain.com';
-
 const defaultForm = {
-  businessName: '',
-  slug: '',
-  businessType: 'restaurant',
-  phone: '',
+  businessName:   '',
+  slug:           '',
+  businessType:   'restaurant',
+  phone:          '',
   whatsappNumber: '',
-  description: '',
-  adminEmail: '',
+  description:    '',
+  adminEmail:     '',
   adminFirstName: '',
-  adminLastName: '',
-  adminPhone: '',
+  adminLastName:  '',
+  adminPhone:     '',
   startWithTrial: true,
 };
+
+// ============================================================================
+// REVENUE FORMATTER (NGN short-form for cards)
+// ============================================================================
+function fmtRevenue(amount) {
+  const n = Number(amount || 0);
+  if (n >= 1_000_000) return `₦${(n / 1_000_000).toFixed(1)}M`;
+  if (n >= 1_000)     return `₦${(n / 1_000).toFixed(1)}K`;
+  return `₦${n.toLocaleString()}`;
+}
 
 // ============================================================================
 // COMPONENT
 // ============================================================================
 const SuperAdminBusinesses = () => {
-  const [businesses, setBusinesses]       = useState([]);
-  const [loading, setLoading]             = useState(true);
-  const [searchTerm, setSearchTerm]       = useState('');
-  const [filterStatus, setFilterStatus]   = useState('all');
+  const [businesses,      setBusinesses]      = useState([]);
+  const [bizStats,        setBizStats]        = useState({});
+  const [loading,         setLoading]         = useState(true);
+  const [searchTerm,      setSearchTerm]      = useState('');
+  const [filterStatus,    setFilterStatus]    = useState('all');
   const [createModalOpen, setCreateModalOpen] = useState(false);
-  const [creating, setCreating]           = useState(false);
-  const [formData, setFormData]           = useState(defaultForm);
-
-  // ── success screen state ──────────────────────────────────────────────────
-  const [successData, setSuccessData]     = useState(null); // null = hidden
+  const [creating,        setCreating]        = useState(false);
+  const [formData,        setFormData]        = useState(defaultForm);
+  const [successData,     setSuccessData]     = useState(null);
 
   useEffect(() => { fetchBusinesses(); }, []);
 
@@ -116,7 +123,19 @@ const SuperAdminBusinesses = () => {
     try {
       setLoading(true);
       const res = await api.get('/api/business');
-      setBusinesses(res.data.businesses || res.data || []);
+      const list = res.data.businesses || res.data || [];
+      setBusinesses(list);
+
+      try {
+        const statsRes = await api.get('/api/stats/all-businesses');
+        const statsMap = {};
+        for (const s of (statsRes.data.businesses || [])) {
+          statsMap[s.id] = s;
+        }
+        setBizStats(statsMap);
+      } catch (e) {
+        console.warn('Could not load business revenue stats:', e?.response?.data?.error || e.message);
+      }
     } catch {
       toast.error('Failed to load businesses');
     } finally {
@@ -129,7 +148,7 @@ const SuperAdminBusinesses = () => {
     e.preventDefault();
 
     if (!formData.businessName.trim())    return toast.error('Business name is required');
-    if (!formData.slug.trim())            return toast.error('Subdomain slug is required');
+    if (!formData.slug.trim())            return toast.error('Slug is required');
     if (!formData.phone.trim())           return toast.error('Business phone is required');
     if (!formData.whatsappNumber.trim())  return toast.error('WhatsApp number is required');
     if (!formData.adminEmail.trim())      return toast.error('Owner email is required');
@@ -138,12 +157,9 @@ const SuperAdminBusinesses = () => {
     try {
       setCreating(true);
       const res = await api.post('/api/business', formData);
-
-      // ✅ Close create modal, show success/credential screen
       setCreateModalOpen(false);
       setFormData(defaultForm);
-      setSuccessData(res.data);   // { business, admin, subscription }
-
+      setSuccessData(res.data);
       fetchBusinesses();
     } catch (error) {
       toast.error(error.response?.data?.error || 'Failed to create business');
@@ -225,7 +241,7 @@ const SuperAdminBusinesses = () => {
   });
 
   const getSubBadge = (b) => {
-    if (!b.isActive) return <Badge variant="danger"   icon={XCircle}>Suspended</Badge>;
+    if (!b.isActive) return <Badge variant="danger" icon={XCircle}>Suspended</Badge>;
     if (b.subscriptionPlan === 'free_trial') {
       const d = daysUntil(b.trialEndsAt);
       return <Badge variant={d <= 3 ? 'warning' : 'info'} icon={Clock}>Trial ({d}d left)</Badge>;
@@ -239,7 +255,7 @@ const SuperAdminBusinesses = () => {
     return <Badge variant="gray">No Subscription</Badge>;
   };
 
-  const stats = {
+  const pageCounts = {
     total:     businesses.length,
     active:    businesses.filter(b => b.isActive).length,
     suspended: businesses.filter(b => !b.isActive).length,
@@ -268,13 +284,13 @@ const SuperAdminBusinesses = () => {
         <Button icon={Plus} onClick={() => setCreateModalOpen(true)}>Create Business</Button>
       </div>
 
-      {/* ── Stats ─────────────────────────────────────────────────────────── */}
+      {/* ── Page-level counts ─────────────────────────────────────────────── */}
       <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
         {[
-          { label: 'Total',     value: stats.total,     color: 'blue' },
-          { label: 'Active',    value: stats.active,    color: 'green' },
-          { label: 'Suspended', value: stats.suspended, color: 'red' },
-          { label: 'On Trial',  value: stats.trial,     color: 'yellow' },
+          { label: 'Total',     value: pageCounts.total,     color: 'blue'   },
+          { label: 'Active',    value: pageCounts.active,    color: 'green'  },
+          { label: 'Suspended', value: pageCounts.suspended, color: 'red'    },
+          { label: 'On Trial',  value: pageCounts.trial,     color: 'yellow' },
         ].map((s, i) => (
           <Card key={i} className={`bg-${s.color}-50 border-${s.color}-200`}>
             <p className="text-sm text-gray-600">{s.label}</p>
@@ -295,7 +311,7 @@ const SuperAdminBusinesses = () => {
             />
           </div>
           <div className="flex gap-2 flex-wrap">
-            {['all','active','suspended','trial','expired'].map(s => (
+            {['all', 'active', 'suspended', 'trial', 'expired'].map(s => (
               <button
                 key={s}
                 onClick={() => setFilterStatus(s)}
@@ -312,7 +328,7 @@ const SuperAdminBusinesses = () => {
         </div>
       </Card>
 
-      {/* ── Grid ──────────────────────────────────────────────────────────── */}
+      {/* ── Business Grid ─────────────────────────────────────────────────── */}
       {filtered.length === 0 ? (
         <Card>
           <EmptyState
@@ -325,91 +341,134 @@ const SuperAdminBusinesses = () => {
         </Card>
       ) : (
         <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-          {filtered.map((b, i) => (
-            <motion.div
-              key={b.id}
-              initial={{ opacity: 0, y: 20 }}
-              animate={{ opacity: 1, y: 0 }}
-              transition={{ delay: i * 0.05 }}
-            >
-              <Card className="hover:shadow-lg transition-shadow">
-                <div className="flex items-start gap-3 mb-4">
-                  <div className="w-14 h-14 bg-gradient-to-br from-blue-500 to-indigo-500 rounded-xl flex items-center justify-center flex-shrink-0">
-                    <Building2 className="w-7 h-7 text-white" />
-                  </div>
-                  <div>
-                    <h3 className="text-lg font-bold text-gray-900">{b.businessName}</h3>
-                    <p className="text-sm text-blue-500 font-mono">{b.slug}.{ROOT_DOMAIN}</p>
-                    <div className="mt-1">{getSubBadge(b)}</div>
-                  </div>
-                </div>
+          {filtered.map((b, i) => {
+            const s = bizStats[b.id] || {};
+            const storeUrl = buildSubdomainUrl(b.slug);
 
-                <div className="grid grid-cols-3 gap-3 mb-4 p-3 bg-gray-50 rounded-lg">
-                  {[
-                    { icon: Package,     label: 'Products', val: b._count?.products ?? 0 },
-                    { icon: ShoppingBag, label: 'Orders',   val: b._count?.orders   ?? 0 },
-                    { icon: UsersIcon,   label: 'Users',    val: b._count?.users    ?? 0 },
-                  ].map(({ icon: Icon, label, val }) => (
-                    <div key={label} className="text-center">
-                      <Icon className="w-4 h-4 text-gray-400 mx-auto mb-1" />
-                      <p className="text-sm font-semibold text-gray-900">{val}</p>
-                      <p className="text-xs text-gray-500">{label}</p>
+            return (
+              <motion.div
+                key={b.id}
+                initial={{ opacity: 0, y: 20 }}
+                animate={{ opacity: 1, y: 0 }}
+                transition={{ delay: i * 0.05 }}
+              >
+                <Card className="hover:shadow-lg transition-shadow">
+
+                  {/* Business header */}
+                  <div className="flex items-start gap-3 mb-4">
+                    <div className="w-14 h-14 bg-gradient-to-br from-blue-500 to-indigo-500 rounded-xl flex items-center justify-center flex-shrink-0">
+                      <Building2 className="w-7 h-7 text-white" />
                     </div>
-                  ))}
-                </div>
-
-                <div className="space-y-2 mb-4 text-sm text-gray-600">
-                  <div className="flex justify-between">
-                    <span>Plan:</span>
-                    <span className="font-medium capitalize">
-                      {b.subscriptionPlan?.replace('_', ' ') || 'None'}
-                    </span>
+                    <div>
+                      <h3 className="text-lg font-bold text-gray-900">{b.businessName}</h3>
+                      {/* ✅ Path-based URL via buildSubdomainUrl */}
+                      <a
+                        href={storeUrl}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="text-sm text-blue-500 font-mono hover:underline"
+                      >
+                        {storeUrl}
+                      </a>
+                      <div className="mt-1">{getSubBadge(b)}</div>
+                    </div>
                   </div>
-                  {b.subscriptionPlan === 'free_trial' && b.trialEndsAt && (
+
+                  {/* Products / Orders row */}
+                  <div className="grid grid-cols-2 gap-3 mb-3 p-3 bg-gray-50 rounded-lg">
+                    <div className="text-center">
+                      <Package className="w-4 h-4 text-gray-400 mx-auto mb-1" />
+                      <p className="text-sm font-semibold text-gray-900">
+                        {s.totalProducts ?? b._count?.products ?? 0}
+                      </p>
+                      <p className="text-xs text-gray-500">Products</p>
+                    </div>
+                    <div className="text-center">
+                      <ShoppingBag className="w-4 h-4 text-gray-400 mx-auto mb-1" />
+                      <p className="text-sm font-semibold text-gray-900">
+                        {s.totalOrders ?? b._count?.orders ?? 0}
+                      </p>
+                      <p className="text-xs text-gray-500">Orders</p>
+                    </div>
+                  </div>
+
+                  {/* Revenue breakdown */}
+                  <div className="mb-3 p-3 bg-green-50 border border-green-100 rounded-lg">
+                    <div className="flex items-center gap-1 mb-2">
+                      <DollarSign className="w-3.5 h-3.5 text-green-600" />
+                      <span className="text-xs font-semibold text-green-700 uppercase tracking-wide">Revenue</span>
+                    </div>
+                    <div className="grid grid-cols-3 gap-2 text-center">
+                      <div>
+                        <p className="text-sm font-bold text-green-700">{fmtRevenue(s.revenueToday)}</p>
+                        <p className="text-[10px] text-gray-500">Today</p>
+                      </div>
+                      <div>
+                        <p className="text-sm font-bold text-green-700">{fmtRevenue(s.revenueThisMonth)}</p>
+                        <p className="text-[10px] text-gray-500">Month</p>
+                      </div>
+                      <div>
+                        <p className="text-sm font-bold text-green-700">{fmtRevenue(s.revenueThisYear)}</p>
+                        <p className="text-[10px] text-gray-500">Year</p>
+                      </div>
+                    </div>
+                    <div className="mt-2 pt-2 border-t border-green-100 flex justify-between text-xs text-gray-500">
+                      <span>Total ever: <span className="font-semibold text-gray-700">{fmtRevenue(s.totalRevenue)}</span></span>
+                      <span>Listed: <span className="font-semibold text-gray-700">{formatDate(b.createdAt, 'short')}</span></span>
+                    </div>
+                  </div>
+
+                  {/* Subscription info */}
+                  <div className="space-y-1.5 mb-4 text-sm text-gray-600">
                     <div className="flex justify-between">
-                      <span>Trial Ends:</span>
-                      <span className="font-medium text-yellow-600">{formatDate(b.trialEndsAt, 'short')}</span>
+                      <span>Plan:</span>
+                      <span className="font-medium capitalize">
+                        {b.subscriptionPlan?.replace('_', ' ') || 'None'}
+                      </span>
                     </div>
-                  )}
-                  {b.subscriptionExpiry && (
-                    <div className="flex justify-between">
-                      <span>Expires:</span>
-                      <span className="font-medium">{formatDate(b.subscriptionExpiry, 'short')}</span>
-                    </div>
-                  )}
-                  <div className="flex justify-between">
-                    <span>Created:</span>
-                    <span className="font-medium">{formatDate(b.createdAt, 'short')}</span>
+                    {b.subscriptionPlan === 'free_trial' && b.trialEndsAt && (
+                      <div className="flex justify-between">
+                        <span>Trial Ends:</span>
+                        <span className="font-medium text-yellow-600">{formatDate(b.trialEndsAt, 'short')}</span>
+                      </div>
+                    )}
+                    {b.subscriptionExpiry && (
+                      <div className="flex justify-between">
+                        <span>Expires:</span>
+                        <span className="font-medium">{formatDate(b.subscriptionExpiry, 'short')}</span>
+                      </div>
+                    )}
                   </div>
-                </div>
 
-                <div className="flex flex-wrap gap-2">
-                  <Link to={`/super-admin/businesses/${b.id}`}>
-                    <Button size="sm" variant="outline" icon={Eye}>View</Button>
-                  </Link>
-                  <Link to={`/super-admin/businesses/${b.id}/subscription`}>
-                    <Button size="sm" variant="outline" icon={DollarSign}>Subscription</Button>
-                  </Link>
-                  {!b.trialStartDate && b.subscriptionPlan !== 'free_trial' && (
-                    <Button size="sm" variant="info" icon={Gift} onClick={() => handleStartTrial(b.id)}>
-                      Start Trial
+                  {/* Action buttons */}
+                  <div className="flex flex-wrap gap-2">
+                    <Link to={`/super-admin/businesses/${b.id}`}>
+                      <Button size="sm" variant="outline" icon={Eye}>View</Button>
+                    </Link>
+                    <Link to={`/super-admin/businesses/${b.id}/subscription`}>
+                      <Button size="sm" variant="outline" icon={DollarSign}>Subscription</Button>
+                    </Link>
+                    {!b.trialStartDate && b.subscriptionPlan !== 'free_trial' && (
+                      <Button size="sm" variant="info" icon={Gift} onClick={() => handleStartTrial(b.id)}>
+                        Start Trial
+                      </Button>
+                    )}
+                    <Button
+                      size="sm"
+                      variant={b.isActive ? 'warning' : 'success'}
+                      icon={Power}
+                      onClick={() => handleToggleStatus(b.id, b.isActive)}
+                    >
+                      {b.isActive ? 'Suspend' : 'Activate'}
                     </Button>
-                  )}
-                  <Button
-                    size="sm"
-                    variant={b.isActive ? 'warning' : 'success'}
-                    icon={Power}
-                    onClick={() => handleToggleStatus(b.id, b.isActive)}
-                  >
-                    {b.isActive ? 'Suspend' : 'Activate'}
-                  </Button>
-                  <Button size="sm" variant="danger" icon={Trash2} onClick={() => handleDelete(b.id)}>
-                    Delete
-                  </Button>
-                </div>
-              </Card>
-            </motion.div>
-          ))}
+                    <Button size="sm" variant="danger" icon={Trash2} onClick={() => handleDelete(b.id)}>
+                      Delete
+                    </Button>
+                  </div>
+                </Card>
+              </motion.div>
+            );
+          })}
         </div>
       )}
 
@@ -431,12 +490,13 @@ const SuperAdminBusinesses = () => {
           />
 
           <Input
-            label="Subdomain Slug *"
+            label="Store Slug *"
             value={formData.slug}
             onChange={handleSlugChange}
             required
             placeholder="mamas-kitchen"
-            helperText={`URL: https://${formData.slug || 'your-slug'}.${ROOT_DOMAIN}`}
+            // ✅ Uses buildSubdomainUrl so preview always matches the actual URL strategy
+            helperText={`Store URL: ${buildSubdomainUrl(formData.slug || 'your-slug')}`}
           />
 
           <div>

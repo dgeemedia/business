@@ -17,16 +17,6 @@ function formatAmount(amount, currency = 'NGN') {
   return `${currency} ${Number(amount).toLocaleString()}`;
 }
 
-// ============================================================================
-// CHECKOUT (Public)
-// ============================================================================
-// ✅ ROOT-CAUSE FIX: Old code relied on req.businessId from subdomain middleware.
-// With path-based routing there's no subdomain, so req.businessId is always null
-// → every checkout hit "Business context required" and returned 500.
-//
-// Fix: read businessId from req.body.businessId (sent by CheckoutModal).
-// CheckoutModal must include: { ...orderData, businessId: business.id }
-// ============================================================================
 async function checkout(req, res) {
   const {
     customerName, phone, address, email, message, items,
@@ -325,40 +315,105 @@ async function deleteOrder(req, res) {
 }
 
 // ============================================================================
-// GET ORDER STATS
+// GET ORDER STATS  — drop-in replacement for the function in orderController.js
+// Revenue now counts orders that are DELIVERED (cash on delivery) OR have
+// paymentStatus = CONFIRMED (pre-paid). This covers both flows correctly.
 // ============================================================================
 async function getOrderStats(req, res) {
   const businessId = req.businessId || req.user?.businessId;
   if (!businessId) return res.status(400).json({ error: 'Business context required' });
 
+  const now             = new Date();
+  const startOfToday    = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+  const startOfMonth    = new Date(now.getFullYear(), now.getMonth(), 1);
+  const startOfYear     = new Date(now.getFullYear(), 0, 1);
+  const thirtyDaysAgo   = new Date(Date.now() - 30 * 24 * 60 * 60 * 1000);
+
+  // Orders that count toward revenue
+  const revenueFilter = {
+    businessId,
+    OR: [
+      { status: 'DELIVERED' },
+      { paymentStatus: 'CONFIRMED' },
+    ],
+  };
+
   const [
-    totalOrdersCount, confirmedOrders, uniqueCustomers,
-    activeProducts, pendingCount, deliveredCount, cancelledCount, recentRevenue,
+    totalOrdersCount,
+    allRevenueOrders,
+    uniqueCustomers,
+    activeProducts,
+    pendingCount,
+    deliveredCount,
+    cancelledCount,
+    confirmedCount,
+    revenueToday,
+    revenueThisMonth,
+    revenueThisYear,
+    recentRevenue30d,
   ] = await Promise.all([
     prisma.order.count({ where: { businessId } }),
-    prisma.order.findMany({ where: { businessId, paymentStatus: 'CONFIRMED' }, select: { totalAmount: true } }),
-    prisma.order.groupBy({ by: ['phone'], where: { businessId }, _count: { phone: true } }),
+
+    // All delivered/confirmed orders for total revenue
+    prisma.order.findMany({
+      where: revenueFilter,
+      select: { totalAmount: true },
+    }),
+
+    prisma.order.groupBy({
+      by: ['phone'],
+      where: { businessId },
+      _count: { phone: true },
+    }),
+
     prisma.product.count({ where: { businessId, isAvailable: true } }),
+
     prisma.order.count({ where: { businessId, status: 'PENDING' } }),
     prisma.order.count({ where: { businessId, status: 'DELIVERED' } }),
     prisma.order.count({ where: { businessId, status: 'CANCELLED' } }),
-    prisma.order.findMany({
-      where: { businessId, paymentStatus: 'CONFIRMED', createdAt: { gte: new Date(Date.now() - 30 * 24 * 60 * 60 * 1000) } },
-      select: { totalAmount: true },
+    prisma.order.count({ where: { businessId, paymentStatus: 'CONFIRMED' } }),
+
+    // Revenue today
+    prisma.order.aggregate({
+      _sum: { totalAmount: true },
+      where: { ...revenueFilter, createdAt: { gte: startOfToday } },
+    }),
+
+    // Revenue this month
+    prisma.order.aggregate({
+      _sum: { totalAmount: true },
+      where: { ...revenueFilter, createdAt: { gte: startOfMonth } },
+    }),
+
+    // Revenue this year
+    prisma.order.aggregate({
+      _sum: { totalAmount: true },
+      where: { ...revenueFilter, createdAt: { gte: startOfYear } },
+    }),
+
+    // Revenue last 30 days
+    prisma.order.aggregate({
+      _sum: { totalAmount: true },
+      where: { ...revenueFilter, createdAt: { gte: thirtyDaysAgo } },
     }),
   ]);
 
+  const totalRevenue = allRevenueOrders.reduce((s, o) => s + Number(o.totalAmount), 0);
+
   return res.json({
     success:         true,
-    totalRevenue:    confirmedOrders.reduce((s, o) => s + Number(o.totalAmount), 0),
-    recentRevenue:   recentRevenue.reduce((s, o) => s + Number(o.totalAmount), 0),
-    totalOrders:     totalOrdersCount,
-    totalCustomers:  uniqueCustomers.length,
+    totalRevenue,
+    revenueToday:       Number(revenueToday._sum.totalAmount || 0),
+    revenueThisMonth:   Number(revenueThisMonth._sum.totalAmount || 0),
+    revenueThisYear:    Number(revenueThisYear._sum.totalAmount || 0),
+    recentRevenue:      Number(recentRevenue30d._sum.totalAmount || 0),  // last 30d
+    totalOrders:        totalOrdersCount,
+    totalCustomers:     uniqueCustomers.length,
     activeProducts,
-    pendingOrders:   pendingCount,
-    deliveredOrders: deliveredCount,
-    cancelledOrders: cancelledCount,
-    confirmedOrders: confirmedOrders.length,
+    pendingOrders:      pendingCount,
+    deliveredOrders:    deliveredCount,
+    cancelledOrders:    cancelledCount,
+    confirmedOrders:    confirmedCount,
   });
 }
 

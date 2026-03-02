@@ -7,8 +7,7 @@ import {
   CheckCircle, Copy, Check, Printer, X,
   User, Lock, Gift, Building2
 } from 'lucide-react';
-
-const ROOT_DOMAIN = import.meta.env.VITE_ROOT_DOMAIN || 'yourdomain.com';
+import { buildSubdomainUrl } from '../../services/api';
 
 function fmt(dateStr) {
   if (!dateStr) return '—';
@@ -25,10 +24,9 @@ function escHtml(str) {
 }
 
 // ── Inject a hidden iframe into the current document and print from it.
-// The browser treats this as a same-origin, same-tab print operation.
-// No new window is opened, so popup blockers never trigger.
 function printViaIframe({ business, admin, subscription }) {
-  const storeUrl = `https://${business.slug}.${ROOT_DOMAIN}`;
+  // ✅ buildSubdomainUrl handles both dev and prod correctly
+  const storeUrl = buildSubdomainUrl(business.slug);
   const issuedAt = fmt(new Date());
   const trialEnd = fmt(subscription?.expiresAt);
   const fullName = `${admin.firstName || ''} ${admin.lastName || ''}`.trim();
@@ -96,7 +94,7 @@ function printViaIframe({ business, admin, subscription }) {
     <div class="grid">
       <div class="f full"><span class="fl">Store URL</span><span class="fv mono">${escHtml(storeUrl)}</span></div>
       <div class="f"><span class="fl">Business Name</span><span class="fv">${escHtml(business.businessName)}</span></div>
-      <div class="f"><span class="fl">Slug / Subdomain</span><span class="fv mono">${escHtml(business.slug)}</span></div>
+      <div class="f"><span class="fl">Slug</span><span class="fv mono">${escHtml(business.slug)}</span></div>
       <div class="f"><span class="fl">Phone</span><span class="fv">${escHtml(business.phone || '—')}</span></div>
       <div class="f"><span class="fl">WhatsApp</span><span class="fv">${escHtml(business.whatsappNumber || '—')}</span></div>
       ${business.businessType ? `<div class="f"><span class="fl">Category</span><span class="fv">${escHtml(business.businessType.replace(/_/g,' '))}</span></div>` : ''}
@@ -116,7 +114,6 @@ function printViaIframe({ business, admin, subscription }) {
 </body>
 </html>`;
 
-  // Create the hidden iframe inside the current page
   const iframe = document.createElement('iframe');
   iframe.setAttribute('aria-hidden', 'true');
   iframe.style.cssText = [
@@ -140,9 +137,7 @@ function printViaIframe({ business, admin, subscription }) {
     }, 3000);
   }
 
-  // Wait for fonts/images inside the iframe, then print
   cw.onload = () => setTimeout(runPrint, 350);
-  // Hard fallback in case onload never fires (e.g. Firefox)
   setTimeout(runPrint, 1200);
 }
 
@@ -226,7 +221,9 @@ const S = {
 export default function BusinessCreatedSuccess({ data, onClose }) {
   if (!data) return null;
   const { business, admin, subscription } = data;
-  const storeUrl = `https://${business.slug}.${ROOT_DOMAIN}`;
+
+  // ✅ Single source of truth — same function used by the print sheet
+  const storeUrl = buildSubdomainUrl(business.slug);
   const issuedAt = fmt(new Date());
   const trialEnd = fmt(subscription?.expiresAt);
   const fullName = `${admin.firstName || ''} ${admin.lastName || ''}`.trim();
@@ -269,7 +266,7 @@ export default function BusinessCreatedSuccess({ data, onClose }) {
               <div style={S.grid}>
                 <div style={S.full}><Field label="Store URL"         value={storeUrl}              mono /></div>
                 <Field label="Business Name"    value={business.businessName} />
-                <Field label="Slug / Subdomain" value={business.slug}         mono />
+                <Field label="Slug"             value={business.slug}         mono />
                 <Field label="Phone"            value={business.phone} />
                 <Field label="WhatsApp"         value={business.whatsappNumber} />
                 {business.businessType && <Field label="Category" value={business.businessType.replace(/_/g,' ')} />}
