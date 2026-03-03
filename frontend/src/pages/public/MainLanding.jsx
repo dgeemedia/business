@@ -810,10 +810,71 @@ const MainLanding = () => {
                     <div>
                       <label className={`block text-sm font-semibold mb-2 ${darkMode?'text-gray-300':'text-gray-700'}`}>Business Type *</label>
                       <select required value={formData.businessType} onChange={e => setFormData({...formData,businessType:e.target.value})}
-                        className={`w-full px-4 py-3 rounded-xl border-2 focus:outline-none transition-colors ${darkMode?'bg-gray-800 border-white/10 focus:border-orange-500 text-white':'bg-white border-gray-200 focus:border-orange-500'}`}>
-                        <option value="">Select type...</option>
-                        {['Restaurant','Retail','Fashion','Services','Other'].map(o=><option key={o}>{o}</option>)}
-                      </select>
+                      className={`w-full px-4 py-3 rounded-xl border-2 focus:outline-none transition-colors ${darkMode?'bg-gray-800 border-white/10 focus:border-orange-500 text-white':'bg-white border-gray-200 focus:border-orange-500'}`}>
+                      <option value="">Select type...</option>
+                      {[
+                        { value: 'restaurant',         label: '🍽️  Restaurant' },
+                        { value: 'fast_food',          label: '🍔  Fast Food / Snacks' },
+                        { value: 'bakery',             label: '🥐  Bakery & Pastry' },
+                        { value: 'cafe',               label: '☕  Café & Coffee Shop' },
+                        { value: 'bar_lounge',         label: '🍻  Bar & Lounge' },
+                        { value: 'catering',           label: '🍱  Catering Service' },
+                        { value: 'food_delivery',      label: '🛵  Food Delivery' },
+                        { value: 'hotel',              label: '🏨  Hotel' },
+                        { value: 'apartment_shortlet', label: '🏢  Apartment / Shortlet' },
+                        { value: 'guesthouse',         label: '🏡  Guesthouse / B&B' },
+                        { value: 'hostel',             label: '🛏️  Hostel' },
+                        { value: 'resort',             label: '🌴  Resort' },
+                        { value: 'event_center',       label: '🎪  Event Center / Hall' },
+                        { value: 'car_sales',          label: '🚗  Car Sales / Auto Dealer' },
+                        { value: 'car_rental',         label: '🚙  Car Rental' },
+                        { value: 'auto_repair',        label: '🔧  Auto Repair / Mechanic' },
+                        { value: 'spare_parts',        label: '⚙️  Auto Spare Parts' },
+                        { value: 'logistics',          label: '🚚  Logistics / Haulage' },
+                        { value: 'fashion',            label: '👗  Fashion & Clothing' },
+                        { value: 'footwear',           label: '👟  Footwear & Shoes' },
+                        { value: 'accessories',        label: '💍  Accessories & Jewelry' },
+                        { value: 'fabric_textile',     label: '🧵  Fabric & Textile' },
+                        { value: 'salon_hair',         label: '💇  Salon & Hair Care' },
+                        { value: 'spa_beauty',         label: '💆  Spa & Beauty Center' },
+                        { value: 'makeup_artist',      label: '💄  Makeup Artist' },
+                        { value: 'pharmacy',           label: '💊  Pharmacy' },
+                        { value: 'hospital_clinic',    label: '🏥  Hospital / Clinic' },
+                        { value: 'dental',             label: '🦷  Dental Clinic' },
+                        { value: 'optician',           label: '👓  Optician / Eye Care' },
+                        { value: 'fitness_gym',        label: '🏋️  Fitness / Gym' },
+                        { value: 'health_supplement',  label: '🌿  Health Supplements' },
+                        { value: 'farm_produce',       label: '🌾  Farm Produce' },
+                        { value: 'livestock',          label: '🐄  Livestock / Animal Sales' },
+                        { value: 'poultry',            label: '🐔  Poultry Farm' },
+                        { value: 'fish_seafood',       label: '🐟  Fish & Seafood' },
+                        { value: 'agro_input',         label: '🌱  Agro Input / Fertilizer' },
+                        { value: 'food_processing',    label: '🏭  Food Processing' },
+                        { value: 'electronics',        label: '📱  Electronics & Gadgets' },
+                        { value: 'phone_accessories',  label: '🔌  Phone & Accessories' },
+                        { value: 'computer_it',        label: '💻  Computer / IT Services' },
+                        { value: 'solar_energy',       label: '☀️  Solar & Energy' },
+                        { value: 'appliances',         label: '📺  Home Appliances' },
+                        { value: 'supermarket',        label: '🛒  Supermarket / Mini-Mart' },
+                        { value: 'wholesale',          label: '📦  Wholesale / Distribution' },
+                        { value: 'hardware_building',  label: '🔨  Hardware & Building Materials' },
+                        { value: 'furniture',          label: '🪑  Furniture & Home Décor' },
+                        { value: 'books_stationery',   label: '📚  Books & Stationery' },
+                        { value: 'gift_shop',          label: '🎁  Gift Shop' },
+                        { value: 'cleaning',           label: '🧹  Cleaning Services' },
+                        { value: 'real_estate',        label: '🏘️  Real Estate' },
+                        { value: 'legal',              label: '⚖️  Legal Services' },
+                        { value: 'financial',          label: '💰  Financial / Accounting' },
+                        { value: 'education',          label: '🎓  Education / Tutoring' },
+                        { value: 'photography',        label: '📸  Photography / Videography' },
+                        { value: 'printing',           label: '🖨️  Printing & Branding' },
+                        { value: 'travel_agency',      label: '✈️  Travel Agency' },
+                        { value: 'security',           label: '🔐  Security Services' },
+                        { value: 'laundry',            label: '👕  Laundry / Dry Cleaning' },
+                        { value: 'event_planning',     label: '🎊  Event Planning' },
+                        { value: 'other',              label: '🏪  Other' },
+                      ].map(({ value, label }) => <option key={value} value={value}>{label}</option>)}
+                    </select>
                     </div>
                     <div>
                       <label className={`block text-sm font-semibold mb-2 ${darkMode?'text-gray-300':'text-gray-700'}`}>Description</label>

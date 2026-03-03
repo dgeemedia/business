@@ -217,11 +217,11 @@ const BusinessRequests = () => {
                     </div>
                     <div className="flex items-center gap-2 text-gray-700">
                       <Mail className="w-4 h-4 text-gray-400" />
-                      <span className="text-sm">{request.email}</span>
+                      <span className="text-sm">{request.ownerEmail}</span>
                     </div>
                     <div className="flex items-center gap-2 text-gray-700">
                       <Phone className="w-4 h-4 text-gray-400" />
-                      <span className="text-sm">{request.phone}</span>
+                      <span className="text-sm">{request.ownerPhone}</span>
                     </div>
                     <div className="text-sm text-gray-500">
                       Applied on {formatDate(request.createdAt, 'short')}
@@ -311,14 +311,14 @@ const BusinessRequests = () => {
                 <label className="text-sm font-semibold text-gray-700 block mb-1">
                   Email
                 </label>
-                <p className="text-gray-900">{selectedRequest.email}</p>
+                <p className="text-gray-900">{selectedRequest.ownerEmail}</p>
               </div>
 
               <div>
                 <label className="text-sm font-semibold text-gray-700 block mb-1">
                   Phone
                 </label>
-                <p className="text-gray-900">{selectedRequest.phone}</p>
+                <p className="text-gray-900">{selectedRequest.ownerPhone}</p>
               </div>
 
               <div className="md:col-span-2">
