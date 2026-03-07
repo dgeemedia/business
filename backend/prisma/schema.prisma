@@ -1,8 +1,3 @@
-// backend/prisma/schema.prisma
-// Run after any changes:
-//   npx prisma migrate dev --name add_storefront_fields
-//   npx prisma generate
-
 generator client {
   provider = "prisma-client-js"
 }
@@ -13,78 +8,70 @@ datasource db {
   directUrl = env("DIRECT_URL")
 }
 
-// ============================================================================
-// BUSINESS MODEL
-// ============================================================================
 model Business {
-  id                  Int      @id @default(autoincrement())
-  slug                String   @unique
-  businessName        String
-  businessType        String   @default("food")
+  id                        Int                   @id @default(autoincrement())
+  slug                      String                @unique
+  businessName              String
+  businessType              String                @default("food")
+  isActive                  Boolean               @default(true)
+  suspendedAt               DateTime?
+  suspensionReason          String?
+  subscriptionPlan          String                @default("none")
+  subscriptionStartDate     DateTime?
+  subscriptionExpiry        DateTime?
+  trialStartDate            DateTime?
+  trialEndsAt               DateTime?
+  lastPaymentDate           DateTime?
+  subscriptionNotes         String?
+  businessMotto             String?
+  phone                     String
+  email                     String?
+  address                   String?
+  description               String?
+  logo                      String?
+  businessHours             String?
+  taxRate                   Float                 @default(0)
+  deliveryFee               Float                 @default(0)
+  primaryColor              String                @default("#10B981")
+  secondaryColor            String                @default("#F59E0B")
+  currency                  String                @default("NGN")
+  language                  String                @default("en")
+  supportedLanguages        Json?
+  autoDetectLanguage        Boolean               @default(true)
+  defaultLanguage           String                @default("en")
+  whatsappNumber            String
+  facebookUrl               String?
+  twitterUrl                String?
+  instagramUrl              String?
+  youtubeUrl                String?
+  linkedinUrl               String?
+  tiktokUrl                 String?
+  footerText                String?
+  footerCopyright           String?               @default("© {year} All rights reserved.")
+  footerAddress             String?
+  footerEmail               String?
+  footerPhone               String?
+  createdAt                 DateTime              @default(now())
+  updatedAt                 DateTime              @updatedAt
+  lastPaymentAmount         Float?
+  lastPaymentProvider       String?
+  lastPaymentRef            String?
+  referralCode              String?               @unique
+  referralBonus             Float                 @default(0)
+  totalReferrals            Int                   @default(0)
+  referredById              Int?
+  skipNextReferralAutoApply Boolean               @default(false)
+  referredBy                Business?             @relation("BusinessReferrals", fields: [referredById], references: [id], onUpdate: NoAction)
+  referrals                 Business[]            @relation("BusinessReferrals")
+  notifications             Notification[]
+  orders                    Order[]
+  products                  Product[]
+  referredTransaction       ReferralTransaction?  @relation("ReferredTransaction")
+  referralTransactions      ReferralTransaction[] @relation("ReferrerTransactions")
+  users                     User[]
 
-  // Status & subscription
-  isActive            Boolean  @default(true)
-  suspendedAt         DateTime?
-  suspensionReason    String?
-  subscriptionPlan    String   @default("none")
-  subscriptionStartDate DateTime?
-  subscriptionExpiry  DateTime?
-  trialStartDate      DateTime?
-  trialEndsAt         DateTime?
-  lastPaymentDate     DateTime?
-  lastPaymentRef      String?   // gateway tx_ref or "MANUAL-slug-timestamp"
-  lastPaymentAmount   Float?    // amount in NGN
-  lastPaymentProvider String?   // 'flutterwave' | 'paystack' | 'manual'
-  subscriptionNotes   String?
-
-  businessMotto       String?
-  phone               String
-  email               String?
-  address             String?
-  description         String?
-  logo                String?
-
-  // ✅ NEW: Storefront display fields
-  businessHours       String?           // e.g. "Mon–Fri: 9am–6pm"
-  taxRate             Float    @default(0)
-  deliveryFee         Float    @default(0)
-
-  // Theme
-  primaryColor        String   @default("#10B981")
-  secondaryColor      String   @default("#F59E0B")
-
-  // Localization
-  currency            String   @default("NGN")
-  language            String   @default("en")
-  supportedLanguages  Json?
-  autoDetectLanguage  Boolean  @default(true)
-  defaultLanguage     String   @default("en")
-
-  // Contact & Social
-  whatsappNumber      String
-  facebookUrl         String?
-  twitterUrl          String?
-  instagramUrl        String?
-  youtubeUrl          String?
-  linkedinUrl         String?
-  tiktokUrl           String?
-
-  // Footer
-  footerText          String?
-  footerCopyright     String?  @default("© {year} All rights reserved.")
-  footerAddress       String?
-  footerEmail         String?
-  footerPhone         String?
-
-  createdAt           DateTime @default(now())
-  updatedAt           DateTime @updatedAt
-
-  // Relationships
-  users               User[]
-  products            Product[]
-  orders              Order[]
-  notifications       Notification[]
-
+  @@index([referralCode])
+  @@index([referredById])
   @@index([slug])
   @@index([isActive])
   @@index([subscriptionExpiry])
@@ -92,27 +79,21 @@ model Business {
   @@index([trialEndsAt])
 }
 
-// ============================================================================
-// USER MODEL
-// ============================================================================
 model User {
-  id           Int       @id @default(autoincrement())
-  email        String    @unique
-  passwordHash String
-  role         String    @default("staff")
-  active       Boolean   @default(true)
-  firstName    String?
-  lastName     String?
-  phone        String?
-  lastLogin    DateTime?
-
-  businessId   Int?
-  business     Business? @relation(fields: [businessId], references: [id], onDelete: Cascade)
-
-  createdAt    DateTime  @default(now())
-  updatedAt    DateTime  @updatedAt
-
-  confirmedPayments Order[] @relation("PaymentConfirmer")
+  id                Int       @id @default(autoincrement())
+  email             String    @unique
+  passwordHash      String
+  role              String    @default("staff")
+  active            Boolean   @default(true)
+  firstName         String?
+  lastName          String?
+  phone             String?
+  lastLogin         DateTime?
+  businessId        Int?
+  createdAt         DateTime  @default(now())
+  updatedAt         DateTime  @updatedAt
+  confirmedPayments Order[]   @relation("PaymentConfirmer")
+  business          Business? @relation(fields: [businessId], references: [id], onDelete: Cascade)
 
   @@index([email])
   @@index([active])
@@ -120,67 +101,54 @@ model User {
   @@index([role])
 }
 
-// ============================================================================
-// PRODUCT MODEL
-// ============================================================================
 model Product {
-  id          Int         @id @default(autoincrement())
+  id          Int             @id @default(autoincrement())
   name        String
   price       Float
   stock       Int
   description String?
   imageUrl    String?
-  featured    Boolean     @default(false)
-
-  // ✅ NEW: Storefront fields
-  isAvailable Boolean     @default(true)   // controls visibility in storefront
-  category    String?                       // used for category filter tabs
-
+  featured    Boolean         @default(false)
+  isAvailable Boolean         @default(true)
+  category    String?
   businessId  Int
-  business    Business    @relation(fields: [businessId], references: [id], onDelete: Cascade)
-
-  createdAt   DateTime    @default(now())
-  updatedAt   DateTime    @updatedAt
-
-  ratings     ProductRating[]
+  createdAt   DateTime        @default(now())
+  updatedAt   DateTime        @updatedAt
   orderItems  OrderItem[]
+  business    Business        @relation(fields: [businessId], references: [id], onDelete: Cascade)
   images      ProductImage[]
+  ratings     ProductRating[]
 
   @@index([createdAt])
   @@index([stock])
   @@index([featured])
   @@index([businessId])
-  @@index([isAvailable])   // ✅ NEW
-  @@index([category])      // ✅ NEW
+  @@index([isAvailable])
+  @@index([category])
 }
 
-// ============================================================================
-// ORDER MODEL
-// ============================================================================
 model Order {
-  id                  Int         @id @default(autoincrement())
-  customerName        String
-  phone               String
-  address             String?
-  email               String?
-  message             String?
-  totalAmount         Float
-  paymentStatus       String      @default("PENDING")
-  paymentMethod       String?
-  paymentConfirmedAt  DateTime?
-  paymentConfirmedBy  Int?
-  paymentConfirmer    User?       @relation("PaymentConfirmer", fields: [paymentConfirmedBy], references: [id])
-  status              String      @default("PENDING")
-  statusHistory       Json?
-  currency            String      @default("NGN")
-  notes               String?
-
-  businessId          Int
-  business            Business    @relation(fields: [businessId], references: [id], onDelete: Cascade)
-
-  createdAt           DateTime    @default(now())
-  updatedAt           DateTime    @updatedAt
-  items               OrderItem[]
+  id                 Int         @id @default(autoincrement())
+  customerName       String
+  phone              String
+  address            String?
+  email              String?
+  message            String?
+  totalAmount        Float
+  paymentStatus      String      @default("PENDING")
+  paymentMethod      String?
+  paymentConfirmedAt DateTime?
+  paymentConfirmedBy Int?
+  status             String      @default("PENDING")
+  statusHistory      Json?
+  currency           String      @default("NGN")
+  notes              String?
+  businessId         Int
+  createdAt          DateTime    @default(now())
+  updatedAt          DateTime    @updatedAt
+  business           Business    @relation(fields: [businessId], references: [id], onDelete: Cascade)
+  paymentConfirmer   User?       @relation("PaymentConfirmer", fields: [paymentConfirmedBy], references: [id])
+  items              OrderItem[]
 
   @@index([createdAt])
   @@index([phone])
@@ -202,46 +170,40 @@ model OrderItem {
   @@index([productId])
 }
 
-// ============================================================================
-// DEPRECATED: BusinessSettings (keeping for backward compatibility)
-// ============================================================================
 model BusinessSettings {
-  id                Int      @id @default(autoincrement())
-  slug              String   @unique
-  businessName      String
-  businessType      String   @default("food")
-  businessMotto     String?
-  phone             String
-  email             String?
-  address           String?
-  description       String?
-  logo              String?
-  primaryColor      String   @default("#10B981")
-  secondaryColor    String   @default("#F59E0B")
-  currency          String   @default("NGN")
-  language          String   @default("en")
+  id                 Int      @id @default(autoincrement())
+  slug               String   @unique
+  businessName       String
+  businessType       String   @default("food")
+  businessMotto      String?
+  phone              String
+  email              String?
+  address            String?
+  description        String?
+  logo               String?
+  primaryColor       String   @default("#10B981")
+  secondaryColor     String   @default("#F59E0B")
+  currency           String   @default("NGN")
+  language           String   @default("en")
   supportedLanguages Json?
-  autoDetectLanguage Boolean @default(true)
-  defaultLanguage   String   @default("en")
-  whatsappNumber    String
-  facebookUrl       String?
-  twitterUrl        String?
-  instagramUrl      String?
-  youtubeUrl        String?
-  linkedinUrl       String?
-  tiktokUrl         String?
-  footerText        String?
-  footerCopyright   String?  @default("© {year} All rights reserved.")
-  footerAddress     String?
-  footerEmail       String?
-  footerPhone       String?
-  createdAt         DateTime @default(now())
-  updatedAt         DateTime @updatedAt
+  autoDetectLanguage Boolean  @default(true)
+  defaultLanguage    String   @default("en")
+  whatsappNumber     String
+  facebookUrl        String?
+  twitterUrl         String?
+  instagramUrl       String?
+  youtubeUrl         String?
+  linkedinUrl        String?
+  tiktokUrl          String?
+  footerText         String?
+  footerCopyright    String?  @default("© {year} All rights reserved.")
+  footerAddress      String?
+  footerEmail        String?
+  footerPhone        String?
+  createdAt          DateTime @default(now())
+  updatedAt          DateTime @updatedAt
 }
 
-// ============================================================================
-// SUPPORTING MODELS
-// ============================================================================
 model ProductRating {
   id        Int      @id @default(autoincrement())
   productId Int
@@ -266,11 +228,9 @@ model Notification {
   productId  Int?
   read       Boolean   @default(false)
   readAt     DateTime?
-
   businessId Int?
-  business   Business? @relation(fields: [businessId], references: [id], onDelete: Cascade)
-
   createdAt  DateTime  @default(now())
+  business   Business? @relation(fields: [businessId], references: [id], onDelete: Cascade)
 
   @@index([read])
   @@index([createdAt])
@@ -308,7 +268,30 @@ model OnboardingRequest {
   rejectionReason   String?
   createdAt         DateTime  @default(now())
   updatedAt         DateTime  @updatedAt
+  referralCode      String?
+  referralApplied   Boolean   @default(false)
 
   @@index([status])
   @@index([createdAt])
+}
+
+model ReferralTransaction {
+  id            Int       @id @default(autoincrement())
+  referrerId    Int
+  referredId    Int       @unique
+  amount        Float     @default(500)
+  appliedAmount Float?
+  status        String    @default("pending")
+  autoApplied   Boolean   @default(false)
+  adminNote     String?
+  approvedAt    DateTime? @db.Timestamptz(6)
+  redeemedAt    DateTime? @db.Timestamptz(6)
+  createdAt     DateTime  @default(now()) @db.Timestamptz(6)
+  updatedAt     DateTime  @default(now()) @updatedAt @db.Timestamptz(6)
+  referred      Business  @relation("ReferredTransaction", fields: [referredId], references: [id], onDelete: Cascade, onUpdate: NoAction)
+  referrer      Business  @relation("ReferrerTransactions", fields: [referrerId], references: [id], onDelete: Cascade, onUpdate: NoAction)
+
+  @@index([autoApplied], map: "ReferralTxn_autoApplied_idx")
+  @@index([referrerId], map: "ReferralTxn_referrerId_idx")
+  @@index([status], map: "ReferralTxn_status_idx")
 }

@@ -110,6 +110,9 @@ app.use('/api/onboarding', onboardingRoutes);
 // Payment
 app.use('/api', require('./routes/payment'));
 
+// Referral routes
+app.use('/api/referral', require('./routes/referral'));
+
 // ============================================================================
 // ADMIN UTILITY ROUTES
 // ============================================================================

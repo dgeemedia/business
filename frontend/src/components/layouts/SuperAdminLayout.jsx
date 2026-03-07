@@ -1,9 +1,11 @@
 // frontend/src/components/layouts/SuperAdminLayout.jsx
+// ✅ UPDATED — added Referral Program nav item
+
 import React, { useState } from 'react';
 import { Outlet, NavLink, useNavigate } from 'react-router-dom';
 import {
   LayoutDashboard, Building2, CreditCard, FileText, Users,
-  BarChart3, LogOut, Menu, X, Shield, Settings
+  BarChart3, LogOut, Menu, X, Shield, Settings, Gift,  // ✅ Gift added
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
 import useAuthStore from '../../stores/authStore';
@@ -24,29 +26,25 @@ const SuperAdminLayout = () => {
   } = useNotifications();
 
   const navItems = [
-    { name: 'Dashboard',     path: '/super-admin/dashboard',     icon: LayoutDashboard },
-    { name: 'Businesses',    path: '/super-admin/businesses',    icon: Building2       },
-    { name: 'Subscriptions', path: '/super-admin/subscriptions', icon: CreditCard      },
-    { name: 'Requests',      path: '/super-admin/requests',      icon: FileText        },
-    { name: 'Admins',        path: '/super-admin/admins',        icon: Users           },
-    { name: 'Analytics',     path: '/super-admin/analytics',     icon: BarChart3       },
-    { name: 'Settings',      path: '/super-admin/settings',      icon: Settings        },
+    { name: 'Dashboard',        path: '/super-admin/dashboard',     icon: LayoutDashboard },
+    { name: 'Businesses',       path: '/super-admin/businesses',    icon: Building2       },
+    { name: 'Subscriptions',    path: '/super-admin/subscriptions', icon: CreditCard      },
+    { name: 'Requests',         path: '/super-admin/requests',      icon: FileText        },
+    { name: 'Admins',           path: '/super-admin/admins',        icon: Users           },
+    { name: 'Analytics',        path: '/super-admin/analytics',     icon: BarChart3       },
+    { name: 'Referral Program', path: '/super-admin/referrals',     icon: Gift            }, // ✅ NEW
+    { name: 'Settings',         path: '/super-admin/settings',      icon: Settings        },
   ];
 
   const handleLogout = () => { logout(); navigate('/login'); };
 
   return (
     <div className="min-h-screen bg-gray-50">
-      {/* Notification Panel */}
       <NotificationPanel
-        open={panelOpen}
-        onClose={closePanel}
-        notifications={notifications}
-        unreadCount={unreadCount}
-        loading={notifLoading}
-        onMarkAsRead={markAsRead}
-        onMarkAllAsRead={markAllAsRead}
-        onRefresh={refresh}
+        open={panelOpen} onClose={closePanel}
+        notifications={notifications} unreadCount={unreadCount}
+        loading={notifLoading} onMarkAsRead={markAsRead}
+        onMarkAllAsRead={markAllAsRead} onRefresh={refresh}
       />
 
       {/* Mobile Header */}
@@ -66,7 +64,6 @@ const SuperAdminLayout = () => {
       {/* Desktop Sidebar */}
       <aside className={`hidden lg:block fixed left-0 top-0 h-full bg-gradient-to-b from-blue-600 to-indigo-700 border-r border-blue-500 transition-all duration-300 z-30 ${sidebarOpen ? 'w-64' : 'w-20'}`}>
         <div className="flex flex-col h-full">
-          {/* Logo + Bell */}
           <div className="h-16 flex items-center justify-between px-4 border-b border-blue-500">
             {sidebarOpen ? (
               <div className="flex items-center gap-2">
@@ -83,17 +80,12 @@ const SuperAdminLayout = () => {
                 <Shield className="w-5 h-5 text-blue-600" />
               </div>
             )}
-            {sidebarOpen && (
-              <NotificationBell unreadCount={unreadCount} onClick={openPanel} dark={true} />
-            )}
+            {sidebarOpen && <NotificationBell unreadCount={unreadCount} onClick={openPanel} dark={true} />}
           </div>
 
-          {/* Nav */}
-          <nav className="flex-1 p-4 space-y-1">
+          <nav className="flex-1 p-4 space-y-1 overflow-y-auto">
             {navItems.map(item => (
-              <NavLink
-                key={item.path}
-                to={item.path}
+              <NavLink key={item.path} to={item.path}
                 className={({ isActive }) =>
                   `flex items-center gap-3 px-4 py-3 rounded-lg transition-all ${
                     isActive ? 'bg-white text-blue-600 font-semibold shadow-lg' : 'text-white hover:bg-white/10'
@@ -106,7 +98,6 @@ const SuperAdminLayout = () => {
             ))}
           </nav>
 
-          {/* User */}
           <div className="p-4 border-t border-blue-500">
             <div className="flex items-center gap-3 p-3 rounded-lg bg-white/10 mb-2">
               <div className="w-10 h-10 bg-white rounded-full flex items-center justify-center text-blue-600 font-semibold flex-shrink-0">
@@ -121,17 +112,13 @@ const SuperAdminLayout = () => {
                 </div>
               )}
             </div>
-            <button
-              onClick={handleLogout}
-              className={`flex items-center gap-3 px-4 py-2 w-full text-left text-white hover:bg-red-500/20 rounded-lg transition-colors ${!sidebarOpen && 'justify-center'}`}
-            >
+            <button onClick={handleLogout}
+              className={`flex items-center gap-3 px-4 py-2 w-full text-left text-white hover:bg-red-500/20 rounded-lg transition-colors ${!sidebarOpen && 'justify-center'}`}>
               <LogOut className="w-4 h-4" />
               {sidebarOpen && <span>Logout</span>}
             </button>
-            <button
-              onClick={() => setSidebarOpen(s => !s)}
-              className="w-full p-2 mt-2 border border-blue-400 text-white rounded-lg hover:bg-white/10 transition-colors"
-            >
+            <button onClick={() => setSidebarOpen(s => !s)}
+              className="w-full p-2 mt-2 border border-blue-400 text-white rounded-lg hover:bg-white/10 transition-colors">
               <Menu className="w-5 h-5 mx-auto" />
             </button>
           </div>
@@ -142,20 +129,14 @@ const SuperAdminLayout = () => {
       <AnimatePresence>
         {mobileMenuOpen && (
           <>
-            <motion.div
-              initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}
+            <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}
               onClick={() => setMobileMenuOpen(false)}
-              className="lg:hidden fixed inset-0 bg-black/50 z-40"
-            />
-            <motion.aside
-              initial={{ x: -300 }} animate={{ x: 0 }} exit={{ x: -300 }}
-              className="lg:hidden fixed left-0 top-16 bottom-0 w-64 bg-gradient-to-b from-blue-600 to-indigo-700 z-50 overflow-y-auto"
-            >
+              className="lg:hidden fixed inset-0 bg-black/50 z-40" />
+            <motion.aside initial={{ x: -300 }} animate={{ x: 0 }} exit={{ x: -300 }}
+              className="lg:hidden fixed left-0 top-16 bottom-0 w-64 bg-gradient-to-b from-blue-600 to-indigo-700 z-50 overflow-y-auto">
               <nav className="p-4 space-y-1">
                 {navItems.map(item => (
-                  <NavLink
-                    key={item.path}
-                    to={item.path}
+                  <NavLink key={item.path} to={item.path}
                     onClick={() => setMobileMenuOpen(false)}
                     className={({ isActive }) =>
                       `flex items-center gap-3 px-4 py-3 rounded-lg transition-all ${
@@ -179,7 +160,6 @@ const SuperAdminLayout = () => {
         )}
       </AnimatePresence>
 
-      {/* Main Content */}
       <main className={`transition-all duration-300 ${sidebarOpen ? 'lg:ml-64' : 'lg:ml-20'} pt-16 lg:pt-0`}>
         <div className="p-6 lg:p-8 max-w-7xl mx-auto">
           <Outlet />

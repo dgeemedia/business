@@ -1,11 +1,12 @@
 // frontend/src/components/layouts/DashboardLayout.jsx
+// ✅ UPDATED — added Referral Program nav item
 
 import React, { useState, useEffect } from 'react';
 import { Outlet, NavLink, useNavigate } from 'react-router-dom';
 import {
   LayoutDashboard, Package, ShoppingCart, Users, Settings,
   LogOut, Menu, X, Building2, ChevronDown, Star, CreditCard,
-  AlertCircle, MessageSquare,
+  AlertCircle, MessageSquare, Gift,  // ✅ Gift added
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
 import useAuthStore from '../../stores/authStore';
@@ -35,13 +36,14 @@ const DashboardLayout = () => {
   const subUrgent = subDays !== null && subDays <= 7;
 
   const navItems = [
-    { name: 'Dashboard',    path: '/dashboard',              icon: LayoutDashboard },
-    { name: 'Products',     path: '/dashboard/products',     icon: Package         },
-    { name: 'Orders',       path: '/dashboard/orders',       icon: ShoppingCart    },
-    { name: 'Users & Team', path: '/dashboard/users',        icon: Users           },
-    { name: 'Reviews',      path: '/dashboard/reviews',      icon: Star            },
-    { name: 'Ratings',      path: '/dashboard/ratings',      icon: MessageSquare   },
-    { name: 'Settings',     path: '/dashboard/settings',     icon: Settings        },
+    { name: 'Dashboard',         path: '/dashboard',              icon: LayoutDashboard },
+    { name: 'Products',          path: '/dashboard/products',     icon: Package         },
+    { name: 'Orders',            path: '/dashboard/orders',       icon: ShoppingCart    },
+    { name: 'Users & Team',      path: '/dashboard/users',        icon: Users           },
+    { name: 'Reviews',           path: '/dashboard/reviews',      icon: Star            },
+    { name: 'Ratings',           path: '/dashboard/ratings',      icon: MessageSquare   },
+    { name: 'Referral Program',  path: '/dashboard/referral',     icon: Gift            }, // ✅ NEW
+    { name: 'Settings',          path: '/dashboard/settings',     icon: Settings        },
     {
       name: 'Subscription',
       path: '/dashboard/subscription',
@@ -85,16 +87,11 @@ const DashboardLayout = () => {
 
   return (
     <div className="min-h-screen bg-gray-50">
-      {/* Notification Panel */}
       <NotificationPanel
-        open={panelOpen}
-        onClose={closePanel}
-        notifications={notifications}
-        unreadCount={unreadCount}
-        loading={notifLoading}
-        onMarkAsRead={markAsRead}
-        onMarkAllAsRead={markAllAsRead}
-        onRefresh={refresh}
+        open={panelOpen} onClose={closePanel}
+        notifications={notifications} unreadCount={unreadCount}
+        loading={notifLoading} onMarkAsRead={markAsRead}
+        onMarkAllAsRead={markAllAsRead} onRefresh={refresh}
       />
 
       {/* Mobile Header */}
@@ -116,7 +113,6 @@ const DashboardLayout = () => {
       {/* Desktop Sidebar */}
       <aside className={`hidden lg:block fixed left-0 top-0 h-full bg-white border-r border-gray-200 transition-all duration-300 z-30 ${sidebarOpen ? 'w-64' : 'w-20'}`}>
         <div className="flex flex-col h-full">
-          {/* Logo + Bell */}
           <div className="h-16 flex items-center justify-between px-4 border-b border-gray-200">
             {sidebarOpen ? (
               <div className="flex items-center gap-2 min-w-0">
@@ -132,12 +128,9 @@ const DashboardLayout = () => {
                 <Building2 className="w-5 h-5 text-white" />
               </div>
             )}
-            {sidebarOpen && (
-              <NotificationBell unreadCount={unreadCount} onClick={openPanel} dark={false} />
-            )}
+            {sidebarOpen && <NotificationBell unreadCount={unreadCount} onClick={openPanel} dark={false} />}
           </div>
 
-          {/* Subscription warning */}
           {sidebarOpen && subUrgent && (
             <div className={`mx-3 mt-3 p-2.5 rounded-lg text-xs flex items-center gap-2 ${
               subDays <= 0
@@ -149,17 +142,13 @@ const DashboardLayout = () => {
             </div>
           )}
 
-          {/* Nav */}
           <nav className="flex-1 p-4 space-y-1 overflow-y-auto">
             {navItems.map(item => <NavItem key={item.path} item={item} />)}
           </nav>
 
-          {/* User */}
           <div className="p-4 border-t border-gray-200">
-            <div
-              className="flex items-center gap-3 p-3 rounded-lg hover:bg-gray-50 cursor-pointer"
-              onClick={() => setUserMenuOpen(!userMenuOpen)}
-            >
+            <div className="flex items-center gap-3 p-3 rounded-lg hover:bg-gray-50 cursor-pointer"
+              onClick={() => setUserMenuOpen(!userMenuOpen)}>
               <div className="w-10 h-10 bg-primary-600 rounded-full flex items-center justify-center text-white font-semibold flex-shrink-0">
                 {getInitials(user?.name || user?.firstName || user?.email)}
               </div>
@@ -177,14 +166,10 @@ const DashboardLayout = () => {
             </div>
             <AnimatePresence>
               {userMenuOpen && sidebarOpen && (
-                <motion.div
-                  initial={{ opacity: 0, y: -10 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: -10 }}
-                  className="mt-2 py-2"
-                >
-                  <button
-                    onClick={handleLogout}
-                    className="flex items-center gap-3 px-4 py-2 w-full text-left text-red-600 hover:bg-red-50 rounded-lg transition-colors"
-                  >
+                <motion.div initial={{ opacity: 0, y: -10 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: -10 }}
+                  className="mt-2 py-2">
+                  <button onClick={handleLogout}
+                    className="flex items-center gap-3 px-4 py-2 w-full text-left text-red-600 hover:bg-red-50 rounded-lg transition-colors">
                     <LogOut className="w-4 h-4" />
                     <span>Logout</span>
                   </button>
@@ -193,11 +178,8 @@ const DashboardLayout = () => {
             </AnimatePresence>
           </div>
 
-          {/* Toggle */}
-          <button
-            onClick={() => setSidebarOpen(s => !s)}
-            className="p-2 m-4 border border-gray-200 rounded-lg hover:bg-gray-50 hidden lg:block"
-          >
+          <button onClick={() => setSidebarOpen(s => !s)}
+            className="p-2 m-4 border border-gray-200 rounded-lg hover:bg-gray-50 hidden lg:block">
             <Menu className="w-5 h-5 mx-auto" />
           </button>
         </div>
@@ -207,20 +189,14 @@ const DashboardLayout = () => {
       <AnimatePresence>
         {mobileMenuOpen && (
           <>
-            <motion.div
-              initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}
+            <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}
               onClick={() => setMobileMenuOpen(false)}
-              className="lg:hidden fixed inset-0 bg-black/50 z-40"
-            />
-            <motion.aside
-              initial={{ x: -300 }} animate={{ x: 0 }} exit={{ x: -300 }}
-              className="lg:hidden fixed left-0 top-16 bottom-0 w-64 bg-white z-50 overflow-y-auto"
-            >
+              className="lg:hidden fixed inset-0 bg-black/50 z-40" />
+            <motion.aside initial={{ x: -300 }} animate={{ x: 0 }} exit={{ x: -300 }}
+              className="lg:hidden fixed left-0 top-16 bottom-0 w-64 bg-white z-50 overflow-y-auto">
               <nav className="p-4 space-y-1">
                 {navItems.map(item => (
-                  <NavLink
-                    key={item.path}
-                    to={item.path}
+                  <NavLink key={item.path} to={item.path}
                     end={item.path === '/dashboard'}
                     onClick={() => setMobileMenuOpen(false)}
                     className={({ isActive }) =>
@@ -250,7 +226,6 @@ const DashboardLayout = () => {
         )}
       </AnimatePresence>
 
-      {/* Main Content */}
       <main className={`transition-all duration-300 ${sidebarOpen ? 'lg:ml-64' : 'lg:ml-20'} pt-16 lg:pt-0`}>
         <div className="p-6 lg:p-8 max-w-7xl mx-auto">
           <Outlet />

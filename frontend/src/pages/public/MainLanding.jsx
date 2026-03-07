@@ -11,6 +11,7 @@ import { useNavigate } from 'react-router-dom';
 import toast from 'react-hot-toast';
 import api, { buildSubdomainUrl } from '../../services/api';
 import RatingWidget from '../../components/public/RatingWidget';
+import { ReferralCodeField } from '../../components/shared/ReferralCodeField';
 
 /* ─── helpers ───────────────────────────────────────────────────────────────── */
 function hexToRgb(hex = '#10b981') {
@@ -503,6 +504,7 @@ const MainLanding = () => {
   const [registerModalOpen, setRegisterModalOpen] = useState(false);
   const [bgIdx, setBgIdx]                 = useState(0);
   const [formData, setFormData]           = useState({ businessName:'', ownerName:'', email:'', phone:'', businessType:'', description:'' });
+  const [referralCode, setReferralCode] = useState('');
   const [clickCount, setClickCount]       = useState(0);
   const [lastClickTime, setLastClickTime] = useState(0);
   const [tapSeq, setTapSeq]               = useState([]);
@@ -559,10 +561,19 @@ const MainLanding = () => {
   const handleRegister = async e => {
     e.preventDefault();
     try {
-      await api.post('/api/onboarding/submit', { businessName:formData.businessName, ownerName:formData.ownerName, ownerEmail:formData.email, ownerPhone:formData.phone, businessType:formData.businessType, description:formData.description });
+      await api.post('/api/onboarding/submit', {
+      businessName:  formData.businessName,
+      ownerName:     formData.ownerName,
+      ownerEmail:    formData.email,
+      ownerPhone:    formData.phone,
+      businessType:  formData.businessType,
+      description:   formData.description,
+      referralCode:  referralCode || undefined,   // ✅ NEW
+    });
       toast.success("Application submitted! We'll contact you within 24 hours.");
       setRegisterModalOpen(false);
       setFormData({ businessName:'', ownerName:'', email:'', phone:'', businessType:'', description:'' });
+      setReferralCode('');
     } catch (err) { toast.error(err.response?.data?.error || 'Submission failed'); }
   };
 
@@ -882,6 +893,11 @@ const MainLanding = () => {
                         className={`w-full px-4 py-3 rounded-xl border-2 focus:outline-none transition-colors ${darkMode?'bg-white/5 border-white/10 focus:border-orange-500 text-white':'bg-white border-gray-200 focus:border-orange-500'}`}
                         placeholder="Tell us about your business..."/>
                     </div>
+                    <ReferralCodeField
+                      value={referralCode}
+                      onChange={setReferralCode}
+                      darkMode={darkMode}
+                    />
                     <motion.button whileHover={{ scale:1.02 }} whileTap={{ scale:0.98 }} type="submit"
                       className="w-full py-4 bg-gradient-to-r from-orange-500 to-pink-600 text-white font-bold text-lg rounded-xl shadow-lg">
                       Submit Application →

@@ -1,7 +1,15 @@
 // backend/src/controllers/businessController.js
-const prisma = require('../lib/prisma');
-const bcrypt = require('bcrypt');
-const notify = require('../lib/notify');
+// ✅ UPDATED — createBusiness now:
+//   1. Calls ensureReferralCode() after business creation (gives every new business its code)
+//   2. Handles optional referralCode param to link referrer + award bonus immediately
+
+const prisma  = require('../lib/prisma');
+const bcrypt  = require('bcrypt');
+const notify  = require('../lib/notify');
+const {
+  ensureReferralCode,
+  awardReferralBonus,
+} = require('./referralController');  // ✅ NEW
 
 // ============================================================================
 // HELPERS
@@ -64,8 +72,7 @@ async function getPublicBusiness(req, res) {
 }
 
 // ============================================================================
-// PUBLIC: GET RATINGS SUMMARY FOR BUSINESS (used by landing page cards)
-// GET /api/business/public/:slug/ratings
+// PUBLIC: GET RATINGS SUMMARY FOR BUSINESS
 // ============================================================================
 async function getBusinessPublicRatings(req, res) {
   const { slug } = req.params;
@@ -151,7 +158,6 @@ async function getPublicProducts(req, res) {
     return { ...productData, averageRating: Math.round(averageRating * 10) / 10, totalRatings };
   });
 
-  console.log(`🛍️ Public products for ${slug}: ${productsWithRatings.length} items`);
   res.json({ products: productsWithRatings });
 }
 
@@ -180,7 +186,7 @@ async function getAllPublicBusinesses(req, res) {
 }
 
 // ============================================================================
-// PUBLIC: GET BUSINESS BY SLUG (internal / legacy)
+// PUBLIC: GET BUSINESS BY SLUG (legacy)
 // ============================================================================
 async function getBusinessBySlug(req, res) {
   const { slug } = req.params;
@@ -258,6 +264,7 @@ async function getBusiness(req, res) {
 
 // ============================================================================
 // ADMIN: CREATE BUSINESS (super-admin only)
+// ✅ UPDATED — assigns referral code + awards bonus if referralCode is provided
 // ============================================================================
 async function createBusiness(req, res) {
   if (req.user.role !== 'super-admin') {
@@ -273,6 +280,7 @@ async function createBusiness(req, res) {
     facebookUrl, twitterUrl, instagramUrl, youtubeUrl, linkedinUrl,
     tiktokUrl, footerText, footerCopyright, footerAddress, footerEmail, footerPhone,
     startWithTrial = true, subscriptionPlan, subscriptionExpiry,
+    referralCode,   // ✅ NEW — optional, entered in admin create-business form
   } = req.body;
 
   if (!slug || !businessName || !phone || !whatsappNumber)
@@ -287,6 +295,19 @@ async function createBusiness(req, res) {
 
   if (existingBusiness) return res.status(400).json({ error: 'A business with this slug already exists' });
   if (existingUser)     return res.status(400).json({ error: 'A user with this email already exists' });
+
+  // ✅ Validate referral code if provided
+  let referrerId = null;
+  if (referralCode && referralCode.trim()) {
+    const referrer = await prisma.business.findFirst({
+      where:  { referralCode: referralCode.trim().toUpperCase(), isActive: true },
+      select: { id: true, businessName: true },
+    });
+    if (!referrer) {
+      return res.status(400).json({ error: 'Invalid referral code' });
+    }
+    referrerId = referrer.id;
+  }
 
   const generatedPassword = generatePassword(12);
   const passwordHash      = await bcrypt.hash(generatedPassword, 12);
@@ -320,30 +341,31 @@ async function createBusiness(req, res) {
 
   const businessData = {
     slug, businessName, phone, whatsappNumber, ...subscriptionData,
-    ...(businessType    && { businessType }),
-    ...(businessMotto   && { businessMotto }),
-    ...(email           && { email }),
-    ...(address         && { address }),
-    ...(description     && { description }),
-    ...(logo            && { logo }),
-    ...(primaryColor    && { primaryColor }),
-    ...(secondaryColor  && { secondaryColor }),
-    ...(currency        && { currency }),
-    ...(language        && { language }),
-    ...(supportedLanguages !== undefined && { supportedLanguages }),
-    ...(autoDetectLanguage !== undefined && { autoDetectLanguage }),
-    ...(defaultLanguage && { defaultLanguage }),
-    ...(facebookUrl     && { facebookUrl }),
-    ...(twitterUrl      && { twitterUrl }),
-    ...(instagramUrl    && { instagramUrl }),
-    ...(youtubeUrl      && { youtubeUrl }),
-    ...(linkedinUrl     && { linkedinUrl }),
-    ...(tiktokUrl       && { tiktokUrl }),
-    ...(footerText      && { footerText }),
+    ...(referrerId     && { referredById: referrerId }),  // ✅ NEW
+    ...(businessType   && { businessType }),
+    ...(businessMotto  && { businessMotto }),
+    ...(email          && { email }),
+    ...(address        && { address }),
+    ...(description    && { description }),
+    ...(logo           && { logo }),
+    ...(primaryColor   && { primaryColor }),
+    ...(secondaryColor && { secondaryColor }),
+    ...(currency       && { currency }),
+    ...(language       && { language }),
+    ...(supportedLanguages   !== undefined && { supportedLanguages }),
+    ...(autoDetectLanguage   !== undefined && { autoDetectLanguage }),
+    ...(defaultLanguage      && { defaultLanguage }),
+    ...(facebookUrl    && { facebookUrl }),
+    ...(twitterUrl     && { twitterUrl }),
+    ...(instagramUrl   && { instagramUrl }),
+    ...(youtubeUrl     && { youtubeUrl }),
+    ...(linkedinUrl    && { linkedinUrl }),
+    ...(tiktokUrl      && { tiktokUrl }),
+    ...(footerText     && { footerText }),
     ...(footerCopyright && { footerCopyright }),
-    ...(footerAddress   && { footerAddress }),
-    ...(footerEmail     && { footerEmail }),
-    ...(footerPhone     && { footerPhone }),
+    ...(footerAddress  && { footerAddress }),
+    ...(footerEmail    && { footerEmail }),
+    ...(footerPhone    && { footerPhone }),
   };
 
   let business, admin;
@@ -374,6 +396,24 @@ async function createBusiness(req, res) {
   } catch (error) {
     console.error('❌ Transaction failed:', error);
     return res.status(500).json({ error: 'Failed to create business', details: error.message });
+  }
+
+  // ✅ Ensure the new business gets its own referral code
+  try {
+    await ensureReferralCode(business.id);
+  } catch (e) {
+    console.warn('⚠️  Could not generate referral code:', e.message);
+  }
+
+  // ✅ If admin created this business using a referral code, award bonus immediately
+  // (super-admin creation = instant approval, no need to wait)
+  if (referrerId) {
+    try {
+      await awardReferralBonus(business.id);
+      console.log(`🔗 Referral bonus awarded: business ${business.id} was referred by ${referrerId}`);
+    } catch (e) {
+      console.warn('⚠️  Could not award referral bonus:', e.message);
+    }
   }
 
   try {
@@ -454,7 +494,6 @@ async function deleteBusiness(req, res) {
   if (!business) return res.status(404).json({ error: 'Business not found' });
 
   await prisma.business.delete({ where: { id: businessId } });
-  console.log(`🗑️  Deleted: ${business.businessName}`);
   res.json({ ok: true, message: 'Business deleted' });
 }
 
@@ -486,10 +525,7 @@ async function toggleBusinessStatus(req, res) {
   const business   = await prisma.business.findUnique({ where: { id: businessId } });
   if (!business) return res.status(404).json({ error: 'Business not found' });
 
-  const newActive = req.body.isActive !== undefined
-    ? Boolean(req.body.isActive)
-    : !business.isActive;
-
+  const newActive        = req.body.isActive !== undefined ? Boolean(req.body.isActive) : !business.isActive;
   const suspensionReason = req.body.suspensionReason || 'Suspended by admin';
 
   const updated = await prisma.business.update({
@@ -511,9 +547,7 @@ async function toggleBusinessStatus(req, res) {
     );
   }
 
-  const action = newActive ? 'reactivated' : 'suspended';
-  console.log(`${newActive ? '✅' : '⏸️'} Business ${action}: ${business.businessName}`);
-  res.json({ ok: true, message: `Business ${action} successfully`, business: updated });
+  res.json({ ok: true, message: `Business ${newActive ? 'reactivated' : 'suspended'} successfully`, business: updated });
 }
 
 module.exports = {

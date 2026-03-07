@@ -1,16 +1,15 @@
 // frontend/src/components/shared/PaymentModal.jsx
 //
-// Complete payment modal that handles:
-//  - Plan selection
-//  - Live gateway (Flutterwave / Paystack) when keys are present
-//  - Manual bank transfer fallback when keys are missing
-//  - Processing / success / failed states
+// ✅ UPDATED — adds referral balance preview before checkout
+// When a business has a referral balance, a green "discount applied" block
+// is shown on the plan-selection screen. The actual deduction happens
+// server-side in verifyPayment() — this UI is purely informational.
 
 import React, { useState } from 'react';
 import {
   CreditCard, CheckCircle, AlertCircle, Loader2,
   ArrowRight, Copy, ExternalLink, Building2, X,
-  Smartphone, Landmark, RefreshCw,
+  Smartphone, Landmark, RefreshCw, Zap,
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
 import toast from 'react-hot-toast';
@@ -78,10 +77,52 @@ function CopyRow({ label, value }) {
   );
 }
 
+// ── Referral discount preview ─────────────────────────────────────────────────
+// planCostMap mirrors PLAN_AMOUNTS on the backend
+const PLAN_COST = { monthly: 15000, annual: 150000 };
+
+function ReferralBalancePreview({ balance, planId }) {
+  if (!balance || balance <= 0) return null;
+  const cost     = PLAN_COST[planId] || 15000;
+  const discount = Math.min(balance, cost);
+  const youPay   = cost - discount;
+
+  return (
+    <div className="bg-emerald-50 border border-emerald-200 rounded-xl p-4 text-sm">
+      <p className="font-semibold text-emerald-800 flex items-center gap-2 mb-2">
+        <Zap className="w-4 h-4" /> Referral Balance Applied Automatically
+      </p>
+      <div className="space-y-1 text-emerald-700">
+        <div className="flex justify-between">
+          <span>Plan cost</span>
+          <span>₦{cost.toLocaleString('en-NG')}</span>
+        </div>
+        <div className="flex justify-between text-emerald-600">
+          <span>Referral discount</span>
+          <span>-₦{discount.toLocaleString('en-NG')}</span>
+        </div>
+        <div className="flex justify-between font-bold border-t border-emerald-200 pt-1 mt-1">
+          <span>You pay</span>
+          <span className={youPay === 0 ? 'text-emerald-600' : ''}>
+            {youPay === 0 ? 'FREE 🎉' : `₦${youPay.toLocaleString('en-NG')}`}
+          </span>
+        </div>
+      </div>
+      <p className="text-[11px] text-emerald-600 mt-2 opacity-80">
+        Discount applied automatically at checkout — no action needed.
+      </p>
+    </div>
+  );
+}
+
 // ── Main Modal ────────────────────────────────────────────────────────────────
 export function PaymentModal({ isOpen, onClose, business, onPaymentSuccess }) {
   const [selectedPlanId, setSelectedPlanId] = useState('monthly');
   const selectedPlan = PLANS.find(p => p.id === selectedPlanId);
+
+  // referralBalance is returned by GET /api/business/:id/subscription-status
+  // It's already on the business object the parent passes in.
+  const referralBalance = business?.referralBonus || 0;
 
   const {
     state, error, hasKeys, provider,
@@ -103,12 +144,11 @@ export function PaymentModal({ isOpen, onClose, business, onPaymentSuccess }) {
     onClose();
   };
 
-  const waRef = `${business?.slug?.toUpperCase()}-${selectedPlanId.toUpperCase()}`;
+  const waRef  = `${business?.slug?.toUpperCase()}-${selectedPlanId.toUpperCase()}`;
   const waText = encodeURIComponent(
     `Hi! I've made a bank transfer for the ${selectedPlan?.name} plan (${selectedPlan?.price}).\nRef: ${waRef}\nBusiness: ${business?.businessName}`
   );
 
-  // ── Modal title ───────────────────────────────────────────────────────────
   const title = isSuccess    ? '✅ Payment Successful!'
     : isFailed   ? '❌ Payment Failed'
     : isManual   ? '🏦 Bank Transfer Details'
@@ -121,26 +161,15 @@ export function PaymentModal({ isOpen, onClose, business, onPaymentSuccess }) {
 
         {/* ── SUCCESS ──────────────────────────────────────────────────────── */}
         {isSuccess && (
-          <motion.div
-            key="success"
-            initial={{ opacity: 0, scale: 0.95 }}
-            animate={{ opacity: 1, scale: 1 }}
-            className="text-center py-6 space-y-4"
-          >
-            <motion.div
-              initial={{ scale: 0 }}
-              animate={{ scale: 1 }}
+          <motion.div key="success" initial={{ opacity: 0, scale: 0.95 }} animate={{ opacity: 1, scale: 1 }}
+            className="text-center py-6 space-y-4">
+            <motion.div initial={{ scale: 0 }} animate={{ scale: 1 }}
               transition={{ type: 'spring', stiffness: 220, delay: 0.1 }}
-              className="w-20 h-20 bg-green-100 rounded-full flex items-center justify-center mx-auto"
-            >
+              className="w-20 h-20 bg-green-100 rounded-full flex items-center justify-center mx-auto">
               <CheckCircle className="w-10 h-10 text-green-500" />
             </motion.div>
             <div>
-              <p className="text-xl font-bold text-gray-900">
-                {state === PAYMENT_STATE.SUCCESS && error === null
-                  ? 'Subscription Activated!'
-                  : 'Request Received!'}
-              </p>
+              <p className="text-xl font-bold text-gray-900">Subscription Activated!</p>
               <p className="text-gray-500 text-sm mt-2">
                 Your <strong>{selectedPlan?.name}</strong> plan is now active.
                 You have full access to all features.
@@ -160,12 +189,8 @@ export function PaymentModal({ isOpen, onClose, business, onPaymentSuccess }) {
 
         {/* ── FAILED ───────────────────────────────────────────────────────── */}
         {isFailed && (
-          <motion.div
-            key="failed"
-            initial={{ opacity: 0 }}
-            animate={{ opacity: 1 }}
-            className="text-center py-6 space-y-4"
-          >
+          <motion.div key="failed" initial={{ opacity: 0 }} animate={{ opacity: 1 }}
+            className="text-center py-6 space-y-4">
             <div className="w-16 h-16 bg-red-100 rounded-full flex items-center justify-center mx-auto">
               <AlertCircle className="w-8 h-8 text-red-500" />
             </div>
@@ -175,23 +200,17 @@ export function PaymentModal({ isOpen, onClose, business, onPaymentSuccess }) {
             </div>
             <div className="flex gap-3">
               <Button fullWidth icon={RefreshCw} onClick={reset}>Try Again</Button>
-              <Button fullWidth variant="outline" onClick={() => {
-                reset();
-                // Jump straight to manual fallback
-                setTimeout(() => initiatePayment(), 50);
-              }}>Pay via Transfer</Button>
+              <Button fullWidth variant="outline" onClick={() => { reset(); setTimeout(() => initiatePayment(), 50); }}>
+                Pay via Transfer
+              </Button>
             </div>
           </motion.div>
         )}
 
         {/* ── PROCESSING ───────────────────────────────────────────────────── */}
         {isProcessing && (
-          <motion.div
-            key="processing"
-            initial={{ opacity: 0 }}
-            animate={{ opacity: 1 }}
-            className="text-center py-12 space-y-4"
-          >
+          <motion.div key="processing" initial={{ opacity: 0 }} animate={{ opacity: 1 }}
+            className="text-center py-12 space-y-4">
             <Loader2 className="w-12 h-12 animate-spin text-primary-500 mx-auto" />
             <p className="font-semibold text-gray-700">Verifying your payment…</p>
             <p className="text-sm text-gray-400">Please do not close this window</p>
@@ -200,13 +219,8 @@ export function PaymentModal({ isOpen, onClose, business, onPaymentSuccess }) {
 
         {/* ── MANUAL BANK TRANSFER ─────────────────────────────────────────── */}
         {isManual && !isSuccess && !isFailed && !isProcessing && (
-          <motion.div
-            key="manual"
-            initial={{ opacity: 0, y: 8 }}
-            animate={{ opacity: 1, y: 0 }}
-            className="space-y-5"
-          >
-            {/* Selected plan summary */}
+          <motion.div key="manual" initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }}
+            className="space-y-5">
             <div className="flex items-center justify-between p-3 bg-primary-50 rounded-xl">
               <div>
                 <p className="font-bold text-primary-800">{selectedPlan?.name} Plan</p>
@@ -215,7 +229,9 @@ export function PaymentModal({ isOpen, onClose, business, onPaymentSuccess }) {
               <p className="text-2xl font-black text-primary-600">{selectedPlan?.price}</p>
             </div>
 
-            {/* If keys not yet set, show informational badge */}
+            {/* ✅ Referral balance preview for manual transfer */}
+            <ReferralBalancePreview balance={referralBalance} planId={selectedPlanId} />
+
             {!hasKeys && (
               <div className="flex items-center gap-2 p-3 bg-amber-50 border border-amber-200 rounded-xl text-xs text-amber-700">
                 <AlertCircle className="w-4 h-4 flex-shrink-0" />
@@ -223,7 +239,6 @@ export function PaymentModal({ isOpen, onClose, business, onPaymentSuccess }) {
               </div>
             )}
 
-            {/* Bank details */}
             <div className="p-4 bg-gray-50 border border-gray-200 rounded-xl">
               <div className="flex items-center gap-2 mb-3">
                 <Landmark className="w-4 h-4 text-gray-500" />
@@ -237,41 +252,27 @@ export function PaymentModal({ isOpen, onClose, business, onPaymentSuccess }) {
             </div>
 
             <p className="text-xs text-center text-gray-500">
-              After transfer, click below to notify our team via WhatsApp.
+              After transfer, notify our team via WhatsApp.
               Your subscription will be activated within <strong>24 hours</strong>.
             </p>
 
-            {/* Actions */}
             <div className="space-y-2">
-              {/* WhatsApp notification */}
-              <a
-                href={`https://wa.me/${SUPPORT_WHATSAPP}?text=${waText}`}
-                target="_blank"
-                rel="noopener noreferrer"
-                className="w-full flex items-center justify-center gap-2 py-3 rounded-xl text-sm font-bold text-white bg-[#25D366] hover:bg-[#1fb856] transition-colors"
-              >
+              <a href={`https://wa.me/${SUPPORT_WHATSAPP}?text=${waText}`}
+                target="_blank" rel="noopener noreferrer"
+                className="w-full flex items-center justify-center gap-2 py-3 rounded-xl text-sm font-bold text-white bg-[#25D366] hover:bg-[#1fb856] transition-colors">
                 <svg width="18" height="18" viewBox="0 0 32 32" fill="currentColor">
                   <path d="M16 .5C7.44.5.5 7.44.5 16c0 2.83.74 5.5 2.04 7.84L.5 31.5l7.86-2.06A15.45 15.45 0 0016 31.5c8.56 0 15.5-6.94 15.5-15.5S24.56.5 16 .5zm7.1 21.7c-.39-.2-2.3-1.14-2.66-1.27-.36-.13-.62-.2-.88.2-.26.39-1 1.27-1.23 1.53-.22.26-.45.29-.84.1a10.64 10.64 0 01-3.14-1.94 11.77 11.77 0 01-2.17-2.7c-.23-.39-.03-.6.17-.8.18-.17.39-.45.59-.68.2-.22.26-.38.39-.64.13-.26.07-.49-.03-.68-.1-.2-.88-2.12-1.2-2.9-.32-.76-.64-.66-.88-.67l-.74-.01c-.26 0-.67.1-1.02.48-.36.38-1.36 1.33-1.36 3.24s1.39 3.76 1.59 4.02c.19.26 2.74 4.18 6.63 5.86.93.4 1.65.64 2.22.82.93.3 1.78.26 2.45.16.75-.11 2.3-.94 2.62-1.84.33-.9.33-1.68.23-1.84-.1-.16-.36-.26-.75-.46z"/>
                 </svg>
                 I've Paid — Notify via WhatsApp
               </a>
-
-              {/* Or submit via system */}
-              <Button
-                fullWidth
-                variant="outline"
-                icon={CheckCircle}
-                loading={isProcessing}
-                onClick={submitManualPayment}
-              >
+              <Button fullWidth variant="outline" icon={CheckCircle} loading={isProcessing}
+                onClick={submitManualPayment}>
                 I've Paid — Notify via System
               </Button>
             </div>
 
-            <button
-              onClick={reset}
-              className="w-full text-xs text-center text-gray-400 hover:text-gray-600 underline transition-colors"
-            >
+            <button onClick={reset}
+              className="w-full text-xs text-center text-gray-400 hover:text-gray-600 underline transition-colors">
               ← Back to plan selection
             </button>
           </motion.div>
@@ -279,12 +280,7 @@ export function PaymentModal({ isOpen, onClose, business, onPaymentSuccess }) {
 
         {/* ── PLAN SELECTION (idle) ─────────────────────────────────────────── */}
         {state === PAYMENT_STATE.IDLE && (
-          <motion.div
-            key="select"
-            initial={{ opacity: 0 }}
-            animate={{ opacity: 1 }}
-            className="space-y-4"
-          >
+          <motion.div key="select" initial={{ opacity: 0 }} animate={{ opacity: 1 }} className="space-y-4">
             <p className="text-sm text-gray-600">
               Choose a plan below.
               {hasKeys
@@ -292,7 +288,6 @@ export function PaymentModal({ isOpen, onClose, business, onPaymentSuccess }) {
                 : ' Pay via bank transfer — your subscription is activated within 24 hours.'}
             </p>
 
-            {/* Payment method badges */}
             <div className="flex items-center gap-2 flex-wrap">
               {hasKeys ? (
                 <>
@@ -317,16 +312,16 @@ export function PaymentModal({ isOpen, onClose, business, onPaymentSuccess }) {
             {/* Plans */}
             <div className="space-y-3">
               {PLANS.map(plan => (
-                <PlanCard
-                  key={plan.id}
-                  plan={plan}
+                <PlanCard key={plan.id} plan={plan}
                   selected={selectedPlanId === plan.id}
                   onSelect={setSelectedPlanId}
                 />
               ))}
             </div>
 
-            {/* How it works */}
+            {/* ✅ Referral balance preview — shown between plans and CTA */}
+            <ReferralBalancePreview balance={referralBalance} planId={selectedPlanId} />
+
             <div className="p-4 bg-gray-50 rounded-xl text-xs text-gray-600 space-y-1.5">
               <p className="font-semibold text-gray-700 text-sm mb-2">📋 How it works</p>
               {hasKeys ? (
@@ -345,18 +340,11 @@ export function PaymentModal({ isOpen, onClose, business, onPaymentSuccess }) {
               )}
             </div>
 
-            {/* CTA */}
             <div className="flex gap-3">
-              <Button
-                fullWidth
-                icon={hasKeys ? CreditCard : ArrowRight}
-                onClick={initiatePayment}
-              >
+              <Button fullWidth icon={hasKeys ? CreditCard : ArrowRight} onClick={initiatePayment}>
                 {hasKeys ? `Pay ${selectedPlan?.price}` : 'Proceed to Payment'}
               </Button>
-              <Button variant="outline" fullWidth onClick={handleClose}>
-                Cancel
-              </Button>
+              <Button variant="outline" fullWidth onClick={handleClose}>Cancel</Button>
             </div>
           </motion.div>
         )}

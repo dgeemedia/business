@@ -9,7 +9,7 @@ import DashboardLayout  from './components/layouts/DashboardLayout';
 import SuperAdminLayout from './components/layouts/SuperAdminLayout';
 
 // Public Pages
-import MainLanding       from './pages/public/MainLanding';
+import MainLanding        from './pages/public/MainLanding';
 import BusinessStorefront from './pages/public/BusinessStorefront';
 
 // Auth Pages
@@ -24,6 +24,7 @@ import Reviews      from './pages/Reviews';
 import Ratings      from './pages/Ratings';
 import Settings     from './pages/Settings';
 import Subscription from './pages/Subscription';
+import Referral     from './pages/Referral';  // ✅ NEW
 
 // Super Admin Pages
 import SuperAdminDashboard            from './pages/super-admin/Dashboard';
@@ -34,6 +35,7 @@ import SuperAdminUsers                from './pages/super-admin/Users';
 import SuperAdminAnalytics            from './pages/super-admin/Analytics';
 import SuperAdminBusinessDetail       from './pages/super-admin/BusinessDetail';
 import SuperAdminBusinessSubscription from './pages/super-admin/BusinessSubscription';
+import ReferralOverview               from './pages/super-admin/ReferralOverview';  // ✅ NEW
 
 const toastConfig = {
   duration: 4000,
@@ -47,9 +49,6 @@ const toastConfig = {
   error:   { iconTheme: { primary: '#ef4444', secondary: '#fff' } },
 };
 
-// ── Protected Route ───────────────────────────────────────────────────────────
-// ✅ Passes location.state.from so Login.jsx can redirect the user back
-// to the page they were trying to visit before being sent to /login.
 const ProtectedRoute = ({ children, requiredRole = null }) => {
   const { isAuthenticated, user } = useAuthStore();
   const location = useLocation();
@@ -66,7 +65,6 @@ const ProtectedRoute = ({ children, requiredRole = null }) => {
   return children;
 };
 
-// ── Public Route ──────────────────────────────────────────────────────────────
 const PublicRoute = ({ children }) => {
   const { isAuthenticated, user } = useAuthStore();
 
@@ -78,9 +76,6 @@ const PublicRoute = ({ children }) => {
   return children;
 };
 
-// ✅ SIMPLIFIED: Single flat router — no more subdomain branch splitting.
-// Storefront is now at /store/:slug instead of a separate subdomain.
-// This works on Vercel free tier + Render free tier with zero DNS tricks.
 function App() {
   return (
     <BrowserRouter>
@@ -89,15 +84,8 @@ function App() {
 
         {/* ── Public ───────────────────────────────────────────────────── */}
         <Route path="/" element={<MainLanding />} />
-
-        {/* ✅ NEW: Path-based storefront — was gee-store.mypadifood.com,
-            now mypadifood.com/store/gee-store */}
         <Route path="/store/:slug" element={<BusinessStorefront />} />
-
-        <Route
-          path="/login"
-          element={<PublicRoute><Login /></PublicRoute>}
-        />
+        <Route path="/login" element={<PublicRoute><Login /></PublicRoute>} />
 
         {/* ── Super Admin ───────────────────────────────────────────────── */}
         <Route
@@ -108,17 +96,18 @@ function App() {
             </ProtectedRoute>
           }
         >
-          <Route path="dashboard"                   element={<SuperAdminDashboard />}            />
-          <Route path="businesses"                  element={<SuperAdminBusinesses />}           />
-          <Route path="businesses/create"           element={<SuperAdminBusinesses />}           />
-          <Route path="businesses/:id"              element={<SuperAdminBusinessDetail />}       />
-          <Route path="businesses/:id/subscription" element={<SuperAdminBusinessSubscription />} />
-          <Route path="requests"                    element={<BusinessRequests />}               />
-          <Route path="settings"                    element={<SuperAdminSettings />}             />
-          <Route path="users"                       element={<SuperAdminUsers />}                />
-          <Route path="admins"                      element={<SuperAdminUsers />}                />
-          <Route path="analytics"                   element={<SuperAdminAnalytics />}            />
-          <Route path="subscriptions"               element={<SuperAdminBusinesses />}           />
+          <Route path="dashboard"                    element={<SuperAdminDashboard />}            />
+          <Route path="businesses"                   element={<SuperAdminBusinesses />}           />
+          <Route path="businesses/create"            element={<SuperAdminBusinesses />}           />
+          <Route path="businesses/:id"               element={<SuperAdminBusinessDetail />}       />
+          <Route path="businesses/:id/subscription"  element={<SuperAdminBusinessSubscription />} />
+          <Route path="requests"                     element={<BusinessRequests />}               />
+          <Route path="settings"                     element={<SuperAdminSettings />}             />
+          <Route path="users"                        element={<SuperAdminUsers />}                />
+          <Route path="admins"                       element={<SuperAdminUsers />}                />
+          <Route path="analytics"                    element={<SuperAdminAnalytics />}            />
+          <Route path="subscriptions"                element={<SuperAdminBusinesses />}           />
+          <Route path="referrals"                    element={<ReferralOverview />}               /> {/* ✅ NEW */}
         </Route>
 
         {/* ── Business Dashboard ────────────────────────────────────────── */}
@@ -135,6 +124,7 @@ function App() {
           <Route path="ratings"      element={<Ratings />}      />
           <Route path="settings"     element={<Settings />}     />
           <Route path="subscription" element={<Subscription />} />
+          <Route path="referral"     element={<Referral />}     /> {/* ✅ NEW */}
         </Route>
 
         {/* Catch-all */}

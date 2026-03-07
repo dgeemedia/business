@@ -1,6 +1,5 @@
-// frontend/src/pages/super-admin/Requests.jsx
 import React, { useState, useEffect } from 'react';
-import { CheckCircle, XCircle, Clock, Building2, Mail, Phone, User, Eye, Filter } from 'lucide-react';
+import { CheckCircle, XCircle, Clock, Building2, Mail, Phone, User, Eye, Filter, Gift } from 'lucide-react';
 import { motion } from 'framer-motion';
 import toast from 'react-hot-toast';
 import { Card, Button, Badge, Modal, LoadingSpinner, EmptyState } from '../../components/shared';
@@ -68,24 +67,25 @@ const BusinessRequests = () => {
 
   const getStatusBadge = (status) => {
     const configs = {
-      pending: { variant: 'warning', icon: Clock, label: 'Pending' },
-      approved: { variant: 'success', icon: CheckCircle, label: 'Approved' },
-      rejected: { variant: 'danger', icon: XCircle, label: 'Rejected' },
+      pending:  { variant: 'warning', icon: Clock,         label: 'Pending'  },
+      approved: { variant: 'success', icon: CheckCircle,   label: 'Approved' },
+      rejected: { variant: 'danger',  icon: XCircle,       label: 'Rejected' },
     };
     return configs[status] || configs.pending;
   };
 
   const stats = {
-    pending: requests.filter(r => r.status === 'pending').length,
+    pending:  requests.filter(r => r.status === 'pending').length,
     approved: requests.filter(r => r.status === 'approved').length,
     rejected: requests.filter(r => r.status === 'rejected').length,
-    total: requests.length,
+    total:    requests.length,
   };
 
   if (loading) return <LoadingSpinner fullScreen />;
 
   return (
     <div className="space-y-6">
+
       {/* Header */}
       <div>
         <h1 className="text-3xl font-bold text-gray-900 mb-2">Business Requests</h1>
@@ -226,6 +226,14 @@ const BusinessRequests = () => {
                     <div className="text-sm text-gray-500">
                       Applied on {formatDate(request.createdAt, 'short')}
                     </div>
+                    {request.referralCode && (
+                      <div className="flex items-center gap-2">
+                        <Gift className="w-4 h-4 text-emerald-500" />
+                        <span className="text-sm font-mono font-semibold text-emerald-700">
+                          Referred: {request.referralCode}
+                        </span>
+                      </div>
+                    )}
                   </div>
 
                   {request.description && (
@@ -327,6 +335,20 @@ const BusinessRequests = () => {
                 </label>
                 <p className="text-gray-900">{formatDate(selectedRequest.createdAt, 'full')}</p>
               </div>
+
+              {selectedRequest.referralCode && (
+                <div className="md:col-span-2">
+                  <label className="text-sm font-semibold text-gray-700 block mb-1">
+                    Referral Code Used
+                  </label>
+                  <div className="flex items-center gap-2">
+                    <Gift className="w-4 h-4 text-emerald-500" />
+                    <span className="font-mono font-bold text-emerald-700 tracking-widest bg-emerald-50 border border-emerald-200 px-3 py-1 rounded-lg text-sm">
+                      {selectedRequest.referralCode}
+                    </span>
+                  </div>
+                </div>
+              )}
             </div>
 
             {selectedRequest.description && (

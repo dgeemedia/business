@@ -1,4 +1,3 @@
-// frontend/src/pages/super-admin/Businesses.jsx
 import React, { useState, useEffect } from 'react';
 import {
   Building2, Plus, Search, Trash2, Power,
@@ -12,6 +11,7 @@ import { Card, Button, Badge, Modal, LoadingSpinner, EmptyState, Input } from '.
 import api, { buildSubdomainUrl } from '../../services/api';
 import { formatDate, daysUntil, isExpired } from '../../utils/helpers';
 import BusinessCreatedSuccess from '../../components/super-admin/BusinessCreatedSuccess';
+import { ReferralCodeField } from '../../components/shared/ReferralCodeField';
 
 // ============================================================================
 // BUSINESS CATEGORIES
@@ -115,6 +115,7 @@ const SuperAdminBusinesses = () => {
   const [createModalOpen, setCreateModalOpen] = useState(false);
   const [creating,        setCreating]        = useState(false);
   const [formData,        setFormData]        = useState(defaultForm);
+  const [referralCode,    setReferralCode]    = useState('');
   const [successData,     setSuccessData]     = useState(null);
 
   useEffect(() => { fetchBusinesses(); }, []);
@@ -156,9 +157,13 @@ const SuperAdminBusinesses = () => {
 
     try {
       setCreating(true);
-      const res = await api.post('/api/business', formData);
+      const res = await api.post('/api/business', {
+        ...formData,
+        referralCode: referralCode || undefined,
+      });
       setCreateModalOpen(false);
       setFormData(defaultForm);
+      setReferralCode('');
       setSuccessData(res.data);
       fetchBusinesses();
     } catch (error) {
@@ -361,7 +366,6 @@ const SuperAdminBusinesses = () => {
                     </div>
                     <div>
                       <h3 className="text-lg font-bold text-gray-900">{b.businessName}</h3>
-                      {/* ✅ Path-based URL via buildSubdomainUrl */}
                       <a
                         href={storeUrl}
                         target="_blank"
@@ -495,7 +499,6 @@ const SuperAdminBusinesses = () => {
             onChange={handleSlugChange}
             required
             placeholder="mamas-kitchen"
-            // ✅ Uses buildSubdomainUrl so preview always matches the actual URL strategy
             helperText={`Store URL: ${buildSubdomainUrl(formData.slug || 'your-slug')}`}
           />
 
@@ -583,6 +586,14 @@ const SuperAdminBusinesses = () => {
                 placeholder="+234 800 000 0000"
               />
             </div>
+          </div>
+
+          {/* Referral Code */}
+          <div className="border-t pt-4">
+            <ReferralCodeField
+              value={referralCode}
+              onChange={setReferralCode}
+            />
           </div>
 
           {/* Trial notice */}
