@@ -504,7 +504,10 @@ const MainLanding = () => {
   const [registerModalOpen, setRegisterModalOpen] = useState(false);
   const [bgIdx, setBgIdx]                 = useState(0);
   const [formData, setFormData]           = useState({ businessName:'', ownerName:'', email:'', phone:'', businessType:'', description:'' });
-  const [referralCode, setReferralCode] = useState('');
+  const [referralCode, setReferralCode] = useState(() => {
+  const params = new URLSearchParams(window.location.search);
+  return (params.get('ref') || '').toUpperCase().replace(/[^A-Z0-9]/g, '').slice(0, 8);
+});
   const [clickCount, setClickCount]       = useState(0);
   const [lastClickTime, setLastClickTime] = useState(0);
   const [tapSeq, setTapSeq]               = useState([]);
@@ -514,6 +517,13 @@ const MainLanding = () => {
     const fn = e => { if (e.ctrlKey && e.shiftKey && e.key.toLowerCase()==='a') { e.preventDefault(); window.open('/login','_blank'); } };
     window.addEventListener('keydown', fn);
     return () => window.removeEventListener('keydown', fn);
+  }, []);
+
+  useEffect(() => {
+    const params = new URLSearchParams(window.location.search);
+    if (params.get('ref')) {
+      setRegisterModalOpen(true);
+    }
   }, []);
 
   const LANGS = { en:{ name:'English', flag:'🇬🇧' }, fr:{ name:'Français', flag:'🇫🇷' } };
