@@ -1,15 +1,21 @@
+// frontend/src/pages/super-admin/SuperAdminBusinesses.jsx
+// ✅ UPDATED — added "Export CSV" button that downloads all visible businesses
+//   with key columns: Name, Slug, Type, Status, Plan, Trial/Expiry, Revenue
+//   (Today/Month/Year/Total), Orders, Products, Created Date
+
 import React, { useState, useEffect } from 'react';
 import {
   Building2, Plus, Search, Trash2, Power,
   DollarSign, Package, ShoppingBag, Users as UsersIcon,
-  Eye, CheckCircle, XCircle, Clock, AlertCircle, Gift
+  Eye, CheckCircle, XCircle, Clock, AlertCircle, Gift,
+  Download,
 } from 'lucide-react';
 import { motion } from 'framer-motion';
 import { Link, useNavigate } from 'react-router-dom';
 import toast from 'react-hot-toast';
 import { Card, Button, Badge, Modal, LoadingSpinner, EmptyState, Input } from '../../components/shared';
 import api, { buildSubdomainUrl } from '../../services/api';
-import { formatDate, daysUntil, isExpired } from '../../utils/helpers';
+import { formatDate, daysUntil, isExpired, exportToCSV } from '../../utils/helpers';
 import BusinessCreatedSuccess from '../../components/super-admin/BusinessCreatedSuccess';
 import { ReferralCodeField } from '../../components/shared/ReferralCodeField';
 
@@ -104,6 +110,55 @@ function fmtRevenue(amount) {
 }
 
 // ============================================================================
+// CSV EXPORT HELPER — shapes business + stats into clean rows
+// ============================================================================
+function buildExportRows(businesses, bizStats) {
+  return businesses.map(b => {
+    const s = bizStats[b.id] || {};
+
+    // Subscription status label
+    let subStatus = 'None';
+    if (!b.isActive) {
+      subStatus = 'Suspended';
+    } else if (b.subscriptionPlan === 'free_trial') {
+      const d = daysUntil(b.trialEndsAt);
+      subStatus = d <= 0 ? 'Trial Expired' : `Trial (${d}d left)`;
+    } else if (b.subscriptionExpiry) {
+      const d = daysUntil(b.subscriptionExpiry);
+      subStatus = d < 0 ? 'Expired' : d <= 7 ? `Expiring (${d}d)` : 'Active';
+    }
+
+    return {
+      'Business Name':     b.businessName      || '',
+      'Slug':              b.slug               || '',
+      'Category':          (b.businessType     || '').replace(/_/g, ' '),
+      'Status':            b.isActive ? 'Active' : 'Suspended',
+      'Subscription':      (b.subscriptionPlan || 'none').replace(/_/g, ' '),
+      'Sub Status':        subStatus,
+      'Trial End':         b.trialEndsAt         ? formatDate(b.trialEndsAt,        'medium') : '',
+      'Sub Expiry':        b.subscriptionExpiry  ? formatDate(b.subscriptionExpiry, 'medium') : '',
+      'Last Payment':      b.lastPaymentDate     ? formatDate(b.lastPaymentDate,    'medium') : '',
+      'Revenue Today':     Number(s.revenueToday       || 0).toFixed(2),
+      'Revenue This Month':Number(s.revenueThisMonth   || 0).toFixed(2),
+      'Revenue This Year': Number(s.revenueThisYear    || 0).toFixed(2),
+      'Total Revenue':     Number(s.totalRevenue       || 0).toFixed(2),
+      'Total Orders':      s.totalOrders     ?? (b._count?.orders   || 0),
+      'Total Products':    s.totalProducts   ?? (b._count?.products || 0),
+      'Total Users':       b._count?.users   || 0,
+      'Referral Code':     b.referralCode    || '',
+      'Total Referrals':   b.totalReferrals  || 0,
+      'Referral Balance':  Number(b.referralBonus || 0).toFixed(2),
+      'Phone':             b.phone           || '',
+      'WhatsApp':          b.whatsappNumber  || '',
+      'Email':             b.email           || '',
+      'Address':           b.address         || '',
+      'Store URL':         buildSubdomainUrl(b.slug),
+      'Created Date':      b.createdAt ? formatDate(b.createdAt, 'medium') : '',
+    };
+  });
+}
+
+// ============================================================================
 // COMPONENT
 // ============================================================================
 const SuperAdminBusinesses = () => {
@@ -117,6 +172,7 @@ const SuperAdminBusinesses = () => {
   const [formData,        setFormData]        = useState(defaultForm);
   const [referralCode,    setReferralCode]    = useState('');
   const [successData,     setSuccessData]     = useState(null);
+  const [exporting,       setExporting]       = useState(false);
 
   useEffect(() => { fetchBusinesses(); }, []);
 
@@ -141,6 +197,24 @@ const SuperAdminBusinesses = () => {
       toast.error('Failed to load businesses');
     } finally {
       setLoading(false);
+    }
+  };
+
+  // ── Export CSV ────────────────────────────────────────────────────────────
+  const handleExportCSV = () => {
+    const rows = buildExportRows(filtered, bizStats);
+    if (rows.length === 0) {
+      toast.error('No businesses to export');
+      return;
+    }
+    setExporting(true);
+    try {
+      exportToCSV(rows, `mypadibusiness-businesses${filterStatus !== 'all' ? `-${filterStatus}` : ''}`);
+      toast.success(`Exported ${rows.length} business${rows.length !== 1 ? 'es' : ''} to CSV`);
+    } catch {
+      toast.error('Export failed');
+    } finally {
+      setExporting(false);
     }
   };
 
@@ -202,7 +276,6 @@ const SuperAdminBusinesses = () => {
         `https://wa.me/${waNumber}?text=${encodeURIComponent(loginMsg)}`,
         '_blank'
       );
-      // ────────────────────────────────────────────────────────────────────
     } catch (error) {
       toast.error(error.response?.data?.error || 'Failed to create business');
     } finally {
@@ -323,7 +396,19 @@ const SuperAdminBusinesses = () => {
           <h1 className="text-3xl font-black text-gray-900 mb-2">Businesses</h1>
           <p className="text-gray-600">Manage all onboarded businesses</p>
         </div>
-        <Button icon={Plus} onClick={() => setCreateModalOpen(true)}>Create Business</Button>
+        <div className="flex items-center gap-3">
+          {/* ✅ Export CSV */}
+          <Button
+            variant="outline"
+            icon={Download}
+            onClick={handleExportCSV}
+            disabled={exporting || filtered.length === 0}
+            title={`Export ${filtered.length} business${filtered.length !== 1 ? 'es' : ''} to CSV`}
+          >
+            Export CSV {filtered.length > 0 && `(${filtered.length})`}
+          </Button>
+          <Button icon={Plus} onClick={() => setCreateModalOpen(true)}>Create Business</Button>
+        </div>
       </div>
 
       {/* ── Page-level counts ─────────────────────────────────────────────── */}
@@ -368,6 +453,12 @@ const SuperAdminBusinesses = () => {
             ))}
           </div>
         </div>
+        {/* Export hint when filtered */}
+        {filterStatus !== 'all' && filtered.length > 0 && (
+          <p className="text-xs text-gray-400 mt-3">
+            Showing {filtered.length} {filterStatus} business{filtered.length !== 1 ? 'es' : ''} — Export CSV will include only these.
+          </p>
+        )}
       </Card>
 
       {/* ── Business Grid ─────────────────────────────────────────────────── */}

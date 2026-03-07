@@ -1,32 +1,12 @@
 // frontend/src/utils/helpers.js
 
 // ── Currency ──────────────────────────────────────────────────────────────────
-// Currency symbol map — extend as needed
 const CURRENCY_SYMBOLS = {
-  NGN: '₦',
-  USD: '$',
-  EUR: '€',
-  GBP: '£',
-  GHS: '₵',
-  KES: 'KSh',
-  ZAR: 'R',
-  XOF: 'CFA',
-  XAF: 'FCFA',
+  NGN: '₦', USD: '$', EUR: '€', GBP: '£', GHS: '₵',
+  KES: 'KSh', ZAR: 'R', XOF: 'CFA', XAF: 'FCFA',
 };
 
-/**
- * Format a number as currency.
- *
- * Usage:
- *   formatCurrency(1500)            // reads currency from localStorage (set by settings)
- *   formatCurrency(1500, 'USD')     // explicit override
- *
- * The dashboard sets localStorage['business_currency'] whenever settings load.
- * This means every page (Products, Orders, Dashboard) automatically uses the
- * same currency as the storefront without passing it around as a prop.
- */
 export const formatCurrency = (amount, currency) => {
-  // If no currency passed, try to read from localStorage (written by businessStore)
   const resolvedCurrency = currency || localStorage.getItem('business_currency') || 'NGN';
   const symbol = CURRENCY_SYMBOLS[resolvedCurrency] || resolvedCurrency;
   const formattedAmount = new Intl.NumberFormat('en-US', {
@@ -36,20 +16,18 @@ export const formatCurrency = (amount, currency) => {
   return `${symbol}${formattedAmount}`;
 };
 
-// Format date
 export const formatDate = (date, format = 'medium') => {
   if (!date) return '';
   const d = new Date(date);
   const formats = {
     short:  { month: 'short', day: 'numeric' },
     medium: { year: 'numeric', month: 'short', day: 'numeric' },
-    long:   { year: 'numeric', month: 'long', day: 'numeric' },
-    full:   { year: 'numeric', month: 'long', day: 'numeric', hour: '2-digit', minute: '2-digit' },
+    long:   { year: 'numeric', month: 'long',  day: 'numeric' },
+    full:   { year: 'numeric', month: 'long',  day: 'numeric', hour: '2-digit', minute: '2-digit' },
   };
   return new Intl.DateTimeFormat('en-US', formats[format]).format(d);
 };
 
-// Format relative time (e.g., "2 hours ago")
 export const formatRelativeTime = (date) => {
   if (!date) return '';
   const now  = new Date();
@@ -212,4 +190,50 @@ export const storage = {
     try { localStorage.clear(); }
     catch (error) { console.error('Failed to clear localStorage:', error); }
   },
+};
+
+// ── CSV Export ────────────────────────────────────────────────────────────────
+/**
+ * exportToCSV(rows, filename)
+ *
+ * rows     — array of plain objects, e.g. [{ Name: 'Acme', Revenue: 5000 }, ...]
+ * filename — without extension, e.g. 'businesses-export'
+ *
+ * Features:
+ *   • Auto-derives column headers from the first row's keys
+ *   • Safely escapes values containing commas, quotes, or newlines
+ *   • Handles numbers, booleans, null, undefined gracefully
+ *   • Appends today's date to the filename automatically
+ *
+ * Usage:
+ *   import { exportToCSV } from '../utils/helpers';
+ *   exportToCSV(rows, 'businesses-export');
+ */
+export const exportToCSV = (rows, filename = 'export') => {
+  if (!rows || rows.length === 0) return;
+
+  const escape = (val) => {
+    if (val === null || val === undefined) return '';
+    const str = String(val);
+    if (str.includes(',') || str.includes('"') || str.includes('\n') || str.includes('\r')) {
+      return `"${str.replace(/"/g, '""')}"`;
+    }
+    return str;
+  };
+
+  const headers  = Object.keys(rows[0]);
+  const csvLines = [
+    headers.map(escape).join(','),
+    ...rows.map(row => headers.map(h => escape(row[h])).join(',')),
+  ];
+
+  const blob = new Blob(['\uFEFF' + csvLines.join('\r\n')], { type: 'text/csv;charset=utf-8;' });
+  const url  = URL.createObjectURL(blob);
+  const link = document.createElement('a');
+  link.href     = url;
+  link.download = `${filename}-${new Date().toISOString().slice(0, 10)}.csv`;
+  document.body.appendChild(link);
+  link.click();
+  document.body.removeChild(link);
+  URL.revokeObjectURL(url);
 };

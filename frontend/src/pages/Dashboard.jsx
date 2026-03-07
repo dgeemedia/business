@@ -1,10 +1,16 @@
 // frontend/src/pages/Dashboard.jsx
+// ✅ UPDATED:
+//   1. Export Orders CSV  — downloads all orders with full customer + item details
+//   2. Export Customers CSV — unique customers derived from orders
+//   3. Referral Overview mini-widget below stat cards (balance, code, earnings)
+
 import React, { useEffect, useState, useCallback } from 'react';
 import {
   TrendingUp, ShoppingBag, Users, DollarSign,
   Package, Clock, CheckCircle, XCircle,
   CreditCard, AlertCircle, RefreshCw, Shield,
-  Calendar, Zap, Star, ArrowRight,
+  Calendar, Zap, Star, ArrowRight, Download,
+  Gift, Share2, Copy, Check,
 } from 'lucide-react';
 import { motion } from 'framer-motion';
 import { Card, Badge, LoadingSpinner, Button } from '../components/shared';
@@ -12,7 +18,8 @@ import { PaymentModal } from '../components/shared/PaymentModal';
 import orderService from '../services/orderService';
 import api from '../services/api';
 import useBusinessStore from '../stores/businessStore';
-import { formatCurrency, formatRelativeTime } from '../utils/helpers';
+import { formatCurrency, formatRelativeTime, formatDate, exportToCSV } from '../utils/helpers';
+import toast from 'react-hot-toast';
 
 // ─────────────────────────────────────────────────────────────────────────────
 // SUBSCRIPTION HELPERS
@@ -99,6 +106,238 @@ function CountdownTimer({ expiryDate, isTrial }) {
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
+// CSV BUILDERS
+// ─────────────────────────────────────────────────────────────────────────────
+function buildOrderRows(orders) {
+  return orders.map(o => {
+    const total    = o.total ?? o.totalAmount ?? 0;
+    const phone    = o.customerPhone ?? o.phone ?? '';
+    const email    = o.customerEmail ?? o.email ?? '';
+    const address  = o.deliveryAddress ?? o.address ?? '';
+    const itemList = (o.items || [])
+      .map(item => {
+        const name  = item.productName ?? item.product?.name ?? 'Unknown';
+        const price = item.price ?? item.unitPrice ?? 0;
+        return `${name} ×${item.quantity} @₦${price}`;
+      })
+      .join(' | ');
+
+    return {
+      'Order ID':      o.orderNumber || String(o.id).padStart(6, '0'),
+      'Customer Name': o.customerName || '',
+      'Email':         email,
+      'Phone':         phone,
+      'Address':       address,
+      'Items':         itemList,
+      'Item Count':    o.items?.length || 0,
+      'Total (₦)':     Number(total).toFixed(2),
+      'Status':        o.status || '',
+      'Note':          o.message || '',
+      'Order Date':    o.createdAt ? formatDate(o.createdAt, 'full') : '',
+    };
+  });
+}
+
+function buildCustomerRows(orders) {
+  // Deduplicate customers by email (fallback: phone, then name)
+  const seen = new Map();
+
+  for (const o of orders) {
+    const email   = o.customerEmail ?? o.email ?? '';
+    const phone   = o.customerPhone ?? o.phone ?? '';
+    const key     = email || phone || o.customerName || String(o.id);
+    const total   = o.total ?? o.totalAmount ?? 0;
+
+    if (seen.has(key)) {
+      const existing         = seen.get(key);
+      existing['Total Orders']++;
+      existing['Total Spend (₦)'] = (
+        parseFloat(existing['Total Spend (₦)']) + Number(total)
+      ).toFixed(2);
+      // Keep latest order date
+      if (o.createdAt && new Date(o.createdAt) > new Date(existing['Last Order'])) {
+        existing['Last Order'] = formatDate(o.createdAt, 'medium');
+      }
+    } else {
+      seen.set(key, {
+        'Customer Name':    o.customerName || '',
+        'Email':            email,
+        'Phone':            phone,
+        'Address':          o.deliveryAddress ?? o.address ?? '',
+        'Total Orders':     1,
+        'Total Spend (₦)':  Number(total).toFixed(2),
+        'First Order':      o.createdAt ? formatDate(o.createdAt, 'medium') : '',
+        'Last Order':       o.createdAt ? formatDate(o.createdAt, 'medium') : '',
+      });
+    }
+  }
+
+  // Sort by total spend desc
+  return Array.from(seen.values()).sort(
+    (a, b) => parseFloat(b['Total Spend (₦)']) - parseFloat(a['Total Spend (₦)'])
+  );
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// REFERRAL MINI WIDGET
+// ─────────────────────────────────────────────────────────────────────────────
+function ReferralWidget({ businessName }) {
+  const [data,    setData]    = useState(null);
+  const [loading, setLoading] = useState(true);
+  const [copied,  setCopied]  = useState(false);
+
+  useEffect(() => {
+    api.get('/api/referral/dashboard')
+      .then(r => setData(r.data))
+      .catch(() => {})
+      .finally(() => setLoading(false));
+  }, []);
+
+  const handleCopy = async (text) => {
+    await navigator.clipboard.writeText(text);
+    setCopied(true);
+    toast.success('Referral code copied!');
+    setTimeout(() => setCopied(false), 2000);
+  };
+
+  const handleShare = () => {
+    if (!data) return;
+    const msg = `Join MyPadiBusiness — Nigeria's #1 business platform! 🚀\n\nUse my referral code: ${data.referralCode}\n\nRegister: ${window.location.origin}?ref=${data.referralCode}`;
+    if (navigator.share) navigator.share({ title: 'Join MyPadiBusiness', text: msg }).catch(() => {});
+    else { navigator.clipboard.writeText(msg); toast.success('Share message copied!'); }
+  };
+
+  if (loading) return (
+    <Card>
+      <div className="flex items-center justify-center h-24">
+        <div className="w-5 h-5 border-2 border-orange-400 border-t-transparent rounded-full animate-spin"/>
+      </div>
+    </Card>
+  );
+
+  if (!data) return null;
+
+  const {
+    referralCode, balance, stats,
+    bonusPerReferral, subscriptionCost, progress,
+  } = data;
+
+  const pct = progress?.percent ?? Math.min(Math.round((balance / subscriptionCost) * 100), 100);
+
+  return (
+    <Card>
+      {/* Header */}
+      <div className="flex items-center justify-between mb-4">
+        <div className="flex items-center gap-2">
+          <div className="w-8 h-8 bg-orange-100 rounded-lg flex items-center justify-center">
+            <Gift className="w-4 h-4 text-orange-600"/>
+          </div>
+          <div>
+            <h3 className="font-bold text-gray-900 text-sm">Referral Program</h3>
+            <p className="text-[11px] text-gray-400">Earn ₦{bonusPerReferral?.toLocaleString()} per referral</p>
+          </div>
+        </div>
+        <a href="/dashboard/referral" className="text-xs text-orange-600 font-semibold hover:underline flex items-center gap-1">
+          Full view <ArrowRight className="w-3 h-3"/>
+        </a>
+      </div>
+
+      {/* Balance ring + code */}
+      <div className="flex items-center gap-4 mb-4">
+        {/* Mini progress ring */}
+        <div className="relative flex-shrink-0">
+          <svg width="64" height="64" style={{ transform: 'rotate(-90deg)' }}>
+            <circle cx="32" cy="32" r="26" fill="none" stroke="#f3f4f6" strokeWidth="6"/>
+            <motion.circle cx="32" cy="32" r="26" fill="none"
+              stroke="#f97316" strokeWidth="6" strokeLinecap="round"
+              strokeDasharray={2 * Math.PI * 26}
+              initial={{ strokeDashoffset: 2 * Math.PI * 26 }}
+              animate={{ strokeDashoffset: 2 * Math.PI * 26 * (1 - pct / 100) }}
+              transition={{ duration: 1.4, ease: [0.16, 1, 0.3, 1] }}
+            />
+          </svg>
+          <div className="absolute inset-0 flex items-center justify-center">
+            <span className="text-[10px] font-black text-orange-600">{pct}%</span>
+          </div>
+        </div>
+
+        <div className="flex-1 min-w-0">
+          <p className="text-2xl font-black text-gray-900">₦{Number(balance || 0).toLocaleString()}</p>
+          <p className="text-xs text-gray-500 mb-2">Referral balance</p>
+          {/* Code row */}
+          <div className="flex items-center gap-2">
+            <span className="font-mono font-bold text-sm text-gray-700 bg-gray-100 px-2.5 py-1 rounded-lg tracking-wider">
+              {referralCode}
+            </span>
+            <button
+              onClick={() => handleCopy(referralCode)}
+              className="p-1.5 rounded-lg text-gray-400 hover:text-gray-600 hover:bg-gray-100 transition-colors"
+            >
+              {copied ? <Check className="w-3.5 h-3.5 text-green-500"/> : <Copy className="w-3.5 h-3.5"/>}
+            </button>
+          </div>
+        </div>
+      </div>
+
+      {/* Stats row */}
+      <div className="grid grid-cols-3 gap-2 mb-4">
+        {[
+          { label: 'Approved',  val: stats?.approved     || 0 },
+          { label: 'Pending',   val: stats?.pending      || 0 },
+          { label: 'Redeemed',  val: stats?.redeemed     || 0 },
+        ].map(({ label, val }) => (
+          <div key={label} className="bg-gray-50 rounded-lg p-2 text-center">
+            <p className="text-base font-black text-gray-900">{val}</p>
+            <p className="text-[10px] text-gray-400">{label}</p>
+          </div>
+        ))}
+      </div>
+
+      {/* Progress bar toward free month */}
+      <div className="mb-4">
+        <div className="flex justify-between text-[11px] text-gray-400 mb-1">
+          <span>Toward free month</span>
+          <span>{pct}% of ₦{subscriptionCost?.toLocaleString()}</span>
+        </div>
+        <div className="h-1.5 bg-gray-100 rounded-full overflow-hidden">
+          <motion.div
+            className="h-full bg-gradient-to-r from-orange-500 to-amber-400 rounded-full"
+            initial={{ width: 0 }}
+            animate={{ width: `${pct}%` }}
+            transition={{ duration: 1.4, ease: [0.16, 1, 0.3, 1] }}
+          />
+        </div>
+        {pct >= 100 && (
+          <p className="text-[11px] text-green-600 font-semibold mt-1 text-center">
+            🎉 Enough balance for a free month!
+          </p>
+        )}
+      </div>
+
+      {/* Auto-apply status — compact pill only */}
+      <div className={`flex items-center gap-1.5 text-[11px] font-semibold mb-4 ${
+        data.autoApplyEnabled ? 'text-emerald-600' : 'text-amber-600'
+      }`}>
+        <div className={`w-1.5 h-1.5 rounded-full flex-shrink-0 ${
+          data.autoApplyEnabled ? 'bg-emerald-500' : 'bg-amber-500'
+        }`}/>
+        {data.autoApplyEnabled
+          ? 'Auto-apply ON — deducts at next payment'
+          : 'Auto-apply paused by admin'}
+      </div>
+
+      {/* Share button */}
+      <button
+        onClick={handleShare}
+        className="w-full flex items-center justify-center gap-2 py-2.5 bg-orange-500 hover:bg-orange-400 text-white rounded-xl font-semibold text-sm transition-colors"
+      >
+        <Share2 className="w-3.5 h-3.5"/> Share Referral Link
+      </button>
+    </Card>
+  );
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
 // MAIN DASHBOARD
 // ─────────────────────────────────────────────────────────────────────────────
 const Dashboard = () => {
@@ -106,6 +345,7 @@ const Dashboard = () => {
 
   const [stats,        setStats]        = useState(null);
   const [recentOrders, setRecentOrders] = useState([]);
+  const [allOrders,    setAllOrders]    = useState([]);
   const [loading,      setLoading]      = useState(true);
 
   // Subscription state
@@ -113,17 +353,23 @@ const Dashboard = () => {
   const [subLoading,       setSubLoading]       = useState(true);
   const [paymentModalOpen, setPaymentModalOpen] = useState(false);
 
+  // Export state
+  const [exportingOrders,    setExportingOrders]    = useState(false);
+  const [exportingCustomers, setExportingCustomers] = useState(false);
+
   // ── Fetch stats ─────────────────────────────────────────────────────────
   useEffect(() => {
     (async () => {
       try {
         setLoading(true);
-        const [statsData, ordersData] = await Promise.all([
+        const [statsData, ordersData, allOrdersData] = await Promise.all([
           orderService.getOrderStats(),
           orderService.getOrders({ limit: 5, sort: 'desc' }),
+          orderService.getOrders({ limit: 10000 }),    // for CSV exports
         ]);
         setStats(statsData);
         setRecentOrders(ordersData.orders || []);
+        setAllOrders(allOrdersData.orders || []);
       } catch (error) {
         console.error('Failed to fetch dashboard data:', error);
       } finally {
@@ -156,6 +402,30 @@ const Dashboard = () => {
 
   useEffect(() => { fetchSubscription(); }, [fetchSubscription]);
 
+  // ── CSV Export handlers ─────────────────────────────────────────────────
+  const handleExportOrders = () => {
+    if (allOrders.length === 0) { toast.error('No orders to export'); return; }
+    setExportingOrders(true);
+    try {
+      const bizSlug = currentBusiness?.slug || 'business';
+      exportToCSV(buildOrderRows(allOrders), `${bizSlug}-orders`);
+      toast.success(`Exported ${allOrders.length} order${allOrders.length !== 1 ? 's' : ''}`);
+    } catch { toast.error('Export failed'); }
+    finally { setExportingOrders(false); }
+  };
+
+  const handleExportCustomers = () => {
+    if (allOrders.length === 0) { toast.error('No customer data to export'); return; }
+    setExportingCustomers(true);
+    try {
+      const rows    = buildCustomerRows(allOrders);
+      const bizSlug = currentBusiness?.slug || 'business';
+      exportToCSV(rows, `${bizSlug}-customers`);
+      toast.success(`Exported ${rows.length} unique customer${rows.length !== 1 ? 's' : ''}`);
+    } catch { toast.error('Export failed'); }
+    finally { setExportingCustomers(false); }
+  };
+
   if (loading) return <LoadingSpinner fullScreen />;
 
   // ── Subscription data ───────────────────────────────────────────────────
@@ -176,7 +446,7 @@ const Dashboard = () => {
   const SubIcon  = subInfo.icon;
   const showRenewBanner = ['trial_expired', 'expired', 'expiring_soon'].includes(subStatus.status);
 
-  // ── Stat cards — revenue today / year / orders / products ──────────────
+  // ── Stat cards ──────────────────────────────────────────────────────────
   const statCards = [
     {
       title:   'Revenue Today',
@@ -231,12 +501,37 @@ const Dashboard = () => {
   return (
     <div className="space-y-6">
       {/* Header */}
-      <div>
-        <h1 className="text-3xl font-bold text-gray-900 mb-1">Dashboard Overview</h1>
-        <p className="text-gray-500 text-sm">
-          Welcome back! Here's what's happening with{' '}
-          <span className="font-semibold text-gray-700">{biz.businessName || 'your business'}</span> today.
-        </p>
+      <div className="flex items-start justify-between gap-4">
+        <div>
+          <h1 className="text-3xl font-bold text-gray-900 mb-1">Dashboard Overview</h1>
+          <p className="text-gray-500 text-sm">
+            Welcome back! Here's what's happening with{' '}
+            <span className="font-semibold text-gray-700">{biz.businessName || 'your business'}</span> today.
+          </p>
+        </div>
+        {/* ✅ Export buttons */}
+        <div className="flex items-center gap-2 flex-shrink-0">
+          <Button
+            size="sm"
+            variant="outline"
+            icon={Download}
+            onClick={handleExportOrders}
+            disabled={exportingOrders || allOrders.length === 0}
+            title="Export all orders to CSV"
+          >
+            Orders CSV
+          </Button>
+          <Button
+            size="sm"
+            variant="outline"
+            icon={Users}
+            onClick={handleExportCustomers}
+            disabled={exportingCustomers || allOrders.length === 0}
+            title="Export customer list to CSV"
+          >
+            Customers CSV
+          </Button>
+        </div>
       </div>
 
       {/* ── Subscription renewal banner ──────────────────────────────────── */}
@@ -288,7 +583,7 @@ const Dashboard = () => {
         ))}
       </div>
 
-      {/* ── Bottom row: Recent Orders + Subscription card ─────────────────── */}
+      {/* ── Bottom row: Recent Orders + Subscription card + Referral ─────── */}
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
 
         {/* Recent Orders — 2/3 width */}
@@ -336,8 +631,9 @@ const Dashboard = () => {
           </Card>
         </div>
 
-        {/* Subscription card — 1/3 width */}
+        {/* Right column — Subscription + Referral widget */}
         <div className="space-y-4">
+          {/* Subscription card */}
           <Card>
             {subLoading ? (
               <div className="flex items-center justify-center py-6">
@@ -382,7 +678,7 @@ const Dashboard = () => {
                   </div>
                 )}
 
-                {/* Stats pills — revenue today / month / year + delivered */}
+                {/* Stats pills */}
                 <div className="grid grid-cols-2 gap-2 mt-4">
                   {[
                     { label: 'Today',     val: formatCurrency(stats?.revenueToday    || 0) },
@@ -410,6 +706,9 @@ const Dashboard = () => {
               </>
             )}
           </Card>
+
+          {/* ✅ Referral mini widget */}
+          <ReferralWidget businessName={biz.businessName} />
         </div>
       </div>
 
