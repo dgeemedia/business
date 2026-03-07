@@ -166,6 +166,43 @@ const SuperAdminBusinesses = () => {
       setReferralCode('');
       setSuccessData(res.data);
       fetchBusinesses();
+
+      // ── WhatsApp login delivery ──────────────────────────────────────────
+      const { business, admin } = res.data;
+      const rawPhone = (formData.adminPhone || formData.whatsappNumber).replace(/[\s\-().]/g, '');
+      const waNumber = rawPhone.startsWith('+')
+        ? rawPhone.slice(1)
+        : rawPhone.startsWith('0')
+          ? '234' + rawPhone.slice(1)
+          : rawPhone.startsWith('234')
+            ? rawPhone
+            : '234' + rawPhone;
+
+      const loginMsg = [
+        `Hi ${formData.adminFirstName} 👋`,
+        ``,
+        `Your business *${formData.businessName}* has been created on *MyPadiBusiness*! 🎉`,
+        ``,
+        `Here are your login details:`,
+        ``,
+        `🌐 *Store URL:* ${buildSubdomainUrl(business.slug)}`,
+        `📧 *Email:* ${formData.adminEmail}`,
+        `🔑 *Temporary Password:* ${admin.temporaryPassword}`,
+        ``,
+        `👉 Login at: ${window.location.origin}/login`,
+        ``,
+        `⚠️ Please change your password after your first login.`,
+        ``,
+        `Your 14-day free trial is now active. Welcome aboard! 🚀`,
+        ``,
+        `— MyPadiBusiness Team`,
+      ].join('\n');
+
+      window.open(
+        `https://wa.me/${waNumber}?text=${encodeURIComponent(loginMsg)}`,
+        '_blank'
+      );
+      // ────────────────────────────────────────────────────────────────────
     } catch (error) {
       toast.error(error.response?.data?.error || 'Failed to create business');
     } finally {

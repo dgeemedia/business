@@ -572,16 +572,52 @@ const MainLanding = () => {
     e.preventDefault();
     try {
       await api.post('/api/onboarding/submit', {
-      businessName:  formData.businessName,
-      ownerName:     formData.ownerName,
-      ownerEmail:    formData.email,
-      ownerPhone:    formData.phone,
-      businessType:  formData.businessType,
-      description:   formData.description,
-      referralCode:  referralCode || undefined,   // ✅ NEW
-    });
+        businessName:  formData.businessName,
+        ownerName:     formData.ownerName,
+        ownerEmail:    formData.email,
+        ownerPhone:    formData.phone,
+        businessType:  formData.businessType,
+        description:   formData.description,
+        referralCode:  referralCode || undefined,
+      });
+
       toast.success("Application submitted! We'll contact you within 24 hours.");
       setRegisterModalOpen(false);
+
+      // ── WhatsApp auto-reply ──────────────────────────────────────────────
+      // Normalise phone: strip spaces, dashes, +, leading 0 → add 234
+      const rawPhone = formData.phone.replace(/[\s\-().]/g, '');
+      const waNumber = rawPhone.startsWith('+')
+        ? rawPhone.slice(1)
+        : rawPhone.startsWith('0')
+          ? '234' + rawPhone.slice(1)
+          : rawPhone.startsWith('234')
+            ? rawPhone
+            : '234' + rawPhone;
+
+      const waMsg = [
+        `Hi ${formData.ownerName} 👋`,
+        ``,
+        `Thank you for registering *${formData.businessName}* on *MyPadiBusiness*! 🎉`,
+        ``,
+        `We've received your application and our team is reviewing it.`,
+        ``,
+        `✅ *What happens next:*`,
+        `• Our team will review your application`,
+        `• You'll receive your login details on this WhatsApp number once approved`,
+        `• Approval usually takes less than 24 hours`,
+        ``,
+        `If you have any questions in the meantime, just reply to this message.`,
+        ``,
+        `— MyPadiBusiness Team 🚀`,
+      ].join('\n');
+
+      window.open(
+        `https://wa.me/${waNumber}?text=${encodeURIComponent(waMsg)}`,
+        '_blank'
+      );
+      // ─────────────────────────────────────────────────────────────────────
+
       setFormData({ businessName:'', ownerName:'', email:'', phone:'', businessType:'', description:'' });
       setReferralCode('');
     } catch (err) { toast.error(err.response?.data?.error || 'Submission failed'); }
