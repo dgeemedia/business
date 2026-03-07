@@ -1,6 +1,6 @@
 // backend/src/routes/stats.js
 const express = require('express');
-const { getSuperAdminStats, getBusinessStats, getAllBusinessesStats } = require('../controllers/statsController');
+const { getSuperAdminStats, getBusinessStats, getAllBusinessesStats, getPlatformActivity } = require('../controllers/statsController');
 const { authMiddleware, requireSuperAdmin } = require('../middleware/auth');
 const { asyncHandler } = require('../middleware/errorHandler');
 
@@ -14,5 +14,7 @@ router.get('/all-businesses', authMiddleware, requireSuperAdmin, asyncHandler(ge
 
 // GET /api/stats/business/:id — Single business stats (super-admin or business owner)
 router.get('/business/:id', authMiddleware, asyncHandler(getBusinessStats));
+
+router.get('/platform-activity', authMiddleware, requireSuperAdmin, asyncHandler(getPlatformActivity));
 
 module.exports = router;

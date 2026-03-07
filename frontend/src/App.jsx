@@ -1,4 +1,8 @@
 // frontend/src/App.jsx
+// Changes from previous version:
+//   1. Import SuperAdminSubscriptions (new page)
+//   2. Route path="subscriptions" now uses SuperAdminSubscriptions instead of SuperAdminBusinesses
+
 import React from 'react';
 import { BrowserRouter, Routes, Route, Navigate, useLocation } from 'react-router-dom';
 import { Toaster } from 'react-hot-toast';
@@ -24,18 +28,19 @@ import Reviews      from './pages/Reviews';
 import Ratings      from './pages/Ratings';
 import Settings     from './pages/Settings';
 import Subscription from './pages/Subscription';
-import Referral     from './pages/Referral';  // ✅ NEW
+import Referral     from './pages/Referral';
 
 // Super Admin Pages
 import SuperAdminDashboard            from './pages/super-admin/Dashboard';
 import SuperAdminBusinesses           from './pages/super-admin/Businesses';
+import SuperAdminSubscriptions        from './pages/super-admin/Subscriptions'; // ✅ NEW
 import BusinessRequests               from './pages/super-admin/Requests';
 import SuperAdminSettings             from './pages/super-admin/Settings';
 import SuperAdminUsers                from './pages/super-admin/Users';
 import SuperAdminAnalytics            from './pages/super-admin/Analytics';
 import SuperAdminBusinessDetail       from './pages/super-admin/BusinessDetail';
 import SuperAdminBusinessSubscription from './pages/super-admin/BusinessSubscription';
-import ReferralOverview               from './pages/super-admin/ReferralOverview';  // ✅ NEW
+import ReferralOverview               from './pages/super-admin/ReferralOverview';
 
 const toastConfig = {
   duration: 4000,
@@ -101,13 +106,13 @@ function App() {
           <Route path="businesses/create"            element={<SuperAdminBusinesses />}           />
           <Route path="businesses/:id"               element={<SuperAdminBusinessDetail />}       />
           <Route path="businesses/:id/subscription"  element={<SuperAdminBusinessSubscription />} />
+          <Route path="subscriptions"                element={<SuperAdminSubscriptions />}        /> {/* ✅ FIXED */}
           <Route path="requests"                     element={<BusinessRequests />}               />
           <Route path="settings"                     element={<SuperAdminSettings />}             />
           <Route path="users"                        element={<SuperAdminUsers />}                />
           <Route path="admins"                       element={<SuperAdminUsers />}                />
           <Route path="analytics"                    element={<SuperAdminAnalytics />}            />
-          <Route path="subscriptions"                element={<SuperAdminBusinesses />}           />
-          <Route path="referrals"                    element={<ReferralOverview />}               /> {/* ✅ NEW */}
+          <Route path="referrals"                    element={<ReferralOverview />}               />
         </Route>
 
         {/* ── Business Dashboard ────────────────────────────────────────── */}
@@ -124,7 +129,7 @@ function App() {
           <Route path="ratings"      element={<Ratings />}      />
           <Route path="settings"     element={<Settings />}     />
           <Route path="subscription" element={<Subscription />} />
-          <Route path="referral"     element={<Referral />}     /> {/* ✅ NEW */}
+          <Route path="referral"     element={<Referral />}     />
         </Route>
 
         {/* Catch-all */}

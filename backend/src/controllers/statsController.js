@@ -259,4 +259,74 @@ async function getAllBusinessesStats(req, res) {
   }
 }
 
-module.exports = { getSuperAdminStats, getBusinessStats, getAllBusinessesStats };
+// GET /api/stats/platform-activity?days=30
+// Returns daily revenue, order count, and new-business count for the chart.
+// Super-admin only.
+//
+async function getPlatformActivity(req, res) {
+  try {
+    if (req.user.role !== 'super-admin') {
+      return res.status(403).json({ error: 'Forbidden' });
+    }
+
+    const days = Math.min(Math.max(parseInt(req.query.days) || 30, 7), 90);
+    const since = new Date(Date.now() - days * 24 * 60 * 60 * 1000);
+
+    // Pull orders and businesses created in the window
+    const [orders, newBusinesses] = await Promise.all([
+      prisma.order.findMany({
+        where: revenueWhere({ createdAt: { gte: since } }),
+        select: { createdAt: true, totalAmount: true },
+      }),
+      prisma.business.findMany({
+        where: { createdAt: { gte: since } },
+        select: { createdAt: true },
+      }),
+    ]);
+
+    // Also pull ALL orders in window for order count (not just revenue ones)
+    const allOrders = await prisma.order.findMany({
+      where: { createdAt: { gte: since } },
+      select: { createdAt: true },
+    });
+
+    // Group everything by YYYY-MM-DD
+    const revenueMap  = {};
+    const ordersMap   = {};
+    const signupsMap  = {};
+
+    for (const o of orders) {
+      const key = o.createdAt.toISOString().slice(0, 10);
+      revenueMap[key] = (revenueMap[key] || 0) + Number(o.totalAmount);
+    }
+    for (const o of allOrders) {
+      const key = o.createdAt.toISOString().slice(0, 10);
+      ordersMap[key] = (ordersMap[key] || 0) + 1;
+    }
+    for (const b of newBusinesses) {
+      const key = b.createdAt.toISOString().slice(0, 10);
+      signupsMap[key] = (signupsMap[key] || 0) + 1;
+    }
+
+    // Build full date range
+    const daily = [];
+    for (let i = days - 1; i >= 0; i--) {
+      const d   = new Date(Date.now() - i * 24 * 60 * 60 * 1000);
+      const key = d.toISOString().slice(0, 10);
+      daily.push({
+        date:    key,
+        label:   d.toLocaleDateString('en-GB', { day: 'numeric', month: 'short' }),
+        revenue: revenueMap[key]  || 0,
+        orders:  ordersMap[key]   || 0,
+        signups: signupsMap[key]  || 0,
+      });
+    }
+
+    res.json({ success: true, days, daily });
+  } catch (error) {
+    console.error('❌ Error fetching platform activity:', error);
+    res.status(500).json({ error: 'Failed to fetch activity data', details: error.message });
+  }
+}
+
+module.exports = { getSuperAdminStats, getBusinessStats, getAllBusinessesStats, getPlatformActivity };

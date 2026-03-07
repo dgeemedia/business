@@ -855,7 +855,7 @@ const MainLanding = () => {
                   </div>
                   <form onSubmit={handleRegister} className="space-y-6">
                     <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-                      {[{label:'Business Name',key:'businessName',type:'text',ph:'Your Business Name'},{label:'Owner Name',key:'ownerName',type:'text',ph:'Your Full Name'},{label:'Email',key:'email',type:'email',ph:'your@email.com'},{label:'Phone',key:'phone',type:'tel',ph:'+234 800 000 0000'}].map(({label,key,type,ph}) => (
+                      {[{label:'Business Name',key:'businessName',type:'text',ph:'Your Business Name'},{label:'Owner Name',key:'ownerName',type:'text',ph:'Your Full Name'},{label:'Email',key:'email',type:'email',ph:'your@email.com'},{label:'Phone(WhatsApp)',key:'phone',type:'tel',ph:'+234 800 000 0000'}].map(({label,key,type,ph}) => (
                         <div key={key}>
                           <label className={`block text-sm font-semibold mb-2 ${darkMode?'text-gray-300':'text-gray-700'}`}>{label} *</label>
                           <input type={type} required value={formData[key]} onChange={e => setFormData({...formData,[key]:e.target.value})}
