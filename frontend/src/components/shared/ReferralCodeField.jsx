@@ -4,18 +4,25 @@
 //   - MainLanding.jsx (public registration modal)
 //   - super-admin/Businesses.jsx (create-business form)
 
-import React, { useState, useCallback } from 'react';
+import React, { useState, useCallback, useRef } from 'react';
 import { CheckCircle, XCircle, Loader } from 'lucide-react';
-import { debounce } from 'lodash';
 import api from '../../services/api';
+
+// Inline debounce — no lodash needed
+function debounce(fn, delay) {
+  let timer;
+  return (...args) => {
+    clearTimeout(timer);
+    timer = setTimeout(() => fn(...args), delay);
+  };
+}
 
 export function ReferralCodeField({ value, onChange, darkMode = false }) {
   const [status,       setStatus]       = useState(null); // null | 'checking' | 'valid' | 'invalid'
   const [referrerName, setReferrerName] = useState('');
 
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  const validate = useCallback(
-    debounce(async (code) => {
+  const validateRef = useRef(
+    debounce(async (code, setStatus, setReferrerName) => {
       if (!code || code.length < 4) { setStatus(null); setReferrerName(''); return; }
       setStatus('checking');
       try {
@@ -31,9 +38,12 @@ export function ReferralCodeField({ value, onChange, darkMode = false }) {
         setStatus('invalid');
         setReferrerName('');
       }
-    }, 600),
-    []
+    }, 600)
   );
+
+  const validate = useCallback((code) => {
+    validateRef.current(code, setStatus, setReferrerName);
+  }, []);
 
   const handleChange = (e) => {
     const val = e.target.value.toUpperCase().replace(/[^A-Z0-9]/g, '').slice(0, 8);
