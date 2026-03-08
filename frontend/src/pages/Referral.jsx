@@ -18,7 +18,7 @@ function fmtDate(d) {
 }
 // ✅ Build the store URL from a slug
 function storeUrl(slug) {
-  return `https://${slug}.mypadifood.com`;
+  return `https://www.${ROOT_DOMAIN}/store/${slug}`;
 }
 
 // ─── Animated number ─────────────────────────────────────────────────────────
