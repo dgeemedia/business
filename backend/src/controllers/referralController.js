@@ -117,7 +117,7 @@ async function getReferralDashboard(req, res) {
       pending:       pending.length,
       redeemed:      redeemed.length,
       autoApplied:   autoApplied.length,
-      totalEarned:   (approved.length + redeemed.length) * REFERRAL_BONUS_AMOUNT,
+      totalEarned:   transactions.length * REFERRAL_BONUS_AMOUNT, // all txns ever = total earned
       totalRedeemed: redeemed.reduce((s, t) => s + (t.appliedAmount || t.amount || 0), 0),
     },
     progress: {
