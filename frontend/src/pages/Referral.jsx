@@ -1,18 +1,9 @@
 // frontend/src/pages/Referral.jsx
-// Referral Program Dashboard — business-facing
-// Features:
-//   • Unique referral code with 1-click copy + share
-//   • Live balance with animated circular progress ring
-//   • Auto-apply status indicator (shows whether next payment will auto-deduct)
-//   • Transaction history with auto/manual badge distinction
-//   • Earnings calculator
-//   • Full "How It Works" explanation
-
 import React, { useState, useEffect, useCallback } from 'react';
 import {
   Copy, Check, Share2, Gift, TrendingUp, Users, CheckCircle,
   Clock, Coins, ChevronRight, Zap, RotateCw, Star, Target,
-  XCircle, AlertCircle, Sparkles, BadgeCheck,
+  XCircle, AlertCircle, Sparkles, BadgeCheck, ExternalLink,
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
 import toast from 'react-hot-toast';
@@ -24,6 +15,10 @@ function fmtN(n) { return `₦${Number(n || 0).toLocaleString('en-NG')}`; }
 function fmtDate(d) {
   if (!d) return '—';
   return new Date(d).toLocaleDateString('en-GB', { day: '2-digit', month: 'short', year: 'numeric' });
+}
+// ✅ Build the store URL from a slug
+function storeUrl(slug) {
+  return `https://${slug}.mypadifood.com`;
 }
 
 // ─── Animated number ─────────────────────────────────────────────────────────
@@ -69,7 +64,7 @@ function CopyBtn({ text, label = 'Copy', variant = 'ghost' }) {
     setCopied(true); toast.success('Copied!');
     setTimeout(() => setCopied(false), 2000);
   };
-  const base = 'flex items-center gap-1.5 px-3.5 py-2 rounded-xl text-sm font-semibold transition-all';
+  const base = 'flex items-center gap-1.5 px-3.5 py-2 rounded-xl text-sm font-semibold transition-all whitespace-nowrap flex-shrink-0';
   const styles = {
     ghost:   copied ? `${base} bg-emerald-500 text-white` : `${base} bg-white/10 hover:bg-white/20 text-white`,
     outline: copied ? `${base} bg-emerald-500 text-white border-emerald-500` : `${base} bg-white text-gray-700 border border-gray-200 hover:bg-gray-50`,
@@ -110,21 +105,6 @@ export default function ReferralDashboard() {
 
   useEffect(() => { fetch(); }, [fetch]);
 
-  const share = () => {
-    if (!data) return;
-    const shareUrl = `${window.location.origin}?ref=${data.referralCode}`;
-    const msg = [
-      `Join MyPadiBusiness — Nigeria's #1 business platform! 🚀`,
-      ``,
-      `I use it to run my business online. Register here:`,
-      shareUrl,
-      ``,
-      `(My referral code *${data.referralCode}* is already in the link)`,
-    ].join('\n');
-    if (navigator.share) navigator.share({ title: 'Join MyPadiBusiness', text: msg, url: shareUrl }).catch(() => {});
-    else { navigator.clipboard.writeText(shareUrl); toast.success('Share link copied!'); }
-  };
-
   if (loading) return (
     <div className="flex items-center justify-center h-64">
       <motion.div animate={{ rotate: 360 }} transition={{ repeat: Infinity, duration: 1, ease: 'linear' }}
@@ -135,6 +115,22 @@ export default function ReferralDashboard() {
 
   const { referralCode, balance, stats, progress, transactions,
           bonusPerReferral, subscriptionCost, autoApplyEnabled } = data;
+
+  // ✅ shareUrl defined AFTER data is confirmed non-null
+  const shareUrl = `${window.location.origin}?ref=${referralCode}`;
+
+  const share = () => {
+    const msg = [
+      `Join MyPadiBusiness — Nigeria's #1 business platform! 🚀`,
+      ``,
+      `I use it to run my business online. Register here:`,
+      shareUrl,
+      ``,
+      `(My referral code *${referralCode}* is already in the link)`,
+    ].join('\n');
+    if (navigator.share) navigator.share({ title: 'Join MyPadiBusiness', text: msg, url: shareUrl }).catch(() => {});
+    else { navigator.clipboard.writeText(shareUrl); toast.success('Share link copied!'); }
+  };
 
   const tabs = [
     { key: 'overview', label: 'Overview',     icon: TrendingUp },
@@ -155,7 +151,7 @@ export default function ReferralDashboard() {
           </p>
         </div>
         <button onClick={fetch} title="Refresh"
-          className="p-2 rounded-lg text-gray-400 hover:text-gray-600 hover:bg-gray-100 transition-colors">
+          className="p-2 rounded-lg text-gray-400 hover:text-gray-600 hover:bg-gray-100 transition-colors flex-shrink-0">
           <RotateCw className="w-4 h-4"/>
         </button>
       </div>
@@ -179,30 +175,34 @@ export default function ReferralDashboard() {
           </svg>
         </div>
 
-        <div className="relative p-6 md:p-8">
+        <div className="relative p-5 md:p-8">
           <div className="grid grid-cols-1 md:grid-cols-2 gap-8 items-center">
 
             {/* Left — code + share */}
-            <div>
+            <div className="min-w-0">
               <div className="flex items-center gap-2 mb-4">
-                <div className="w-8 h-8 bg-orange-500 rounded-lg flex items-center justify-center">
+                <div className="w-8 h-8 bg-orange-500 rounded-lg flex items-center justify-center flex-shrink-0">
                   <Gift className="w-4 h-4 text-white"/>
                 </div>
                 <span className="text-white/60 text-xs font-semibold uppercase tracking-widest">Your Referral Code</span>
               </div>
 
-              {/* Code box */}
-              <div className="flex items-center gap-3 mb-5">
-                <div className="bg-white/10 border border-white/20 rounded-2xl px-5 py-3.5 backdrop-blur-sm">
-                  <span className="font-black text-4xl tracking-[0.25em] text-white" style={{ fontFamily: 'monospace' }}>
+              {/* ✅ MOBILE FIX — code + copy button in one pill, code truncates, button never clips */}
+              <div className="mb-5">
+                <div className="flex items-center gap-2 bg-white/10 border border-white/20 rounded-2xl px-4 py-3 backdrop-blur-sm w-full">
+                  <span
+                    className="font-black text-2xl sm:text-3xl md:text-4xl tracking-[0.2em] text-white flex-1 min-w-0 truncate"
+                    style={{ fontFamily: 'monospace' }}
+                  >
                     {referralCode}
                   </span>
+                  <CopyBtn text={referralCode} label="Copy"/>
                 </div>
-                <CopyBtn text={referralCode} label="Copy"/>
               </div>
 
               <p className="text-white/50 text-sm leading-relaxed mb-5">
-                Share this code with other business owners. When they register and get approved, you instantly earn <span className="text-orange-400 font-semibold">₦{bonusPerReferral.toLocaleString()}</span>.
+                Share this code with other business owners. When they register and get approved, you instantly earn{' '}
+                <span className="text-orange-400 font-semibold">₦{bonusPerReferral.toLocaleString()}</span>.
                 Your balance is <span className="text-emerald-400 font-semibold">automatically applied</span> to your next subscription payment.
               </p>
 
@@ -213,16 +213,19 @@ export default function ReferralDashboard() {
                   : 'bg-amber-500/20 text-amber-300 border border-amber-500/30'
               }`}>
                 {autoApplyEnabled
-                  ? <><Zap className="w-3.5 h-3.5"/> Auto-apply ON — balance deducted automatically at checkout</>
-                  : <><AlertCircle className="w-3.5 h-3.5"/> Auto-apply paused for next payment (admin override)</>}
+                  ? <><Zap className="w-3.5 h-3.5 flex-shrink-0"/> Auto-apply ON — balance deducted automatically at checkout</>
+                  : <><AlertCircle className="w-3.5 h-3.5 flex-shrink-0"/> Auto-apply paused for next payment (admin override)</>}
               </div>
 
-              <div className="flex gap-2 flex-wrap">
-                <button onClick={share}
-                  className="flex items-center gap-2 px-5 py-2.5 bg-orange-500 hover:bg-orange-400 text-white rounded-xl font-semibold text-sm transition-colors">
-                  <Share2 className="w-4 h-4"/> Share Link
+              {/* ✅ MOBILE FIX — share buttons stretch on small screens */}
+              <div className="flex gap-2 w-full">
+                <button
+                  onClick={share}
+                  className="flex-1 flex items-center justify-center gap-2 px-4 py-2.5 bg-orange-500 hover:bg-orange-400 text-white rounded-xl font-semibold text-sm transition-colors min-w-0"
+                >
+                  <Share2 className="w-4 h-4 flex-shrink-0"/> Share Link
                 </button>
-                <CopyBtn text={`${window.location.origin}?ref=${referralCode}`} label="Copy Link"/>
+                <CopyBtn text={shareUrl} label="Copy Link" variant="ghost"/>
               </div>
             </div>
 
@@ -279,10 +282,10 @@ export default function ReferralDashboard() {
             {/* Stat cards */}
             <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
               {[
-                { icon: Users,       color: 'blue',   label: 'Total Referrals', value: stats.approved + stats.pending + stats.redeemed },
-                { icon: CheckCircle, color: 'emerald', label: 'Approved',       value: stats.approved  },
-                { icon: Zap,         color: 'orange', label: 'Auto-Applied',    value: stats.autoApplied },
-                { icon: Coins,       color: 'purple', label: 'Total Earned',    value: null, naira: stats.totalEarned },
+                { icon: Users,       color: 'blue',    label: 'Total Referrals', value: stats.approved + stats.pending + stats.redeemed },
+                { icon: CheckCircle, color: 'emerald', label: 'Approved',        value: stats.approved   },
+                { icon: Zap,         color: 'orange',  label: 'Auto-Applied',    value: stats.autoApplied },
+                { icon: Coins,       color: 'purple',  label: 'Total Earned',    value: null, naira: stats.totalEarned },
               ].map(({ icon: Icon, color, label, value, naira }) => (
                 <div key={label} className="bg-white border border-gray-200 rounded-2xl p-5 hover:shadow-md transition-shadow">
                   <div className={`inline-flex p-2.5 rounded-xl bg-${color}-50 mb-3`}>
@@ -305,7 +308,7 @@ export default function ReferralDashboard() {
                 <p className="font-bold text-blue-900 text-sm mb-1">Auto-Apply is {autoApplyEnabled ? 'Active' : 'Paused'}</p>
                 <p className="text-blue-700 text-sm leading-relaxed">
                   {autoApplyEnabled
-                    ? `When you pay for your next subscription, up to ₦${fmtN(balance)} from your referral balance will be automatically deducted from the payment total. You only pay the remainder.`
+                    ? `When you pay for your next subscription, up to ${fmtN(balance)} from your referral balance will be automatically deducted from the payment total. You only pay the remainder.`
                     : 'Your admin has temporarily paused auto-apply for your next payment. Your balance is safe and will carry forward.'}
                 </p>
               </div>
@@ -347,18 +350,18 @@ export default function ReferralDashboard() {
                   </button>
                 </div>
                 <div className="divide-y divide-gray-50">
-                  {transactions.slice(0, 5).map((t, i) => (
-                    <div key={t.id} className="flex items-center justify-between px-6 py-3.5 hover:bg-gray-50 transition-colors">
-                      <div className="flex items-center gap-3">
-                        <div className="w-9 h-9 bg-gradient-to-br from-violet-500 to-purple-600 rounded-xl flex items-center justify-center text-white font-bold text-sm">
+                  {transactions.slice(0, 5).map((t) => (
+                    <div key={t.id} className="flex items-center justify-between px-6 py-3.5 hover:bg-gray-50 transition-colors gap-3">
+                      <div className="flex items-center gap-3 min-w-0">
+                        <div className="w-9 h-9 bg-gradient-to-br from-violet-500 to-purple-600 rounded-xl flex items-center justify-center text-white font-bold text-sm flex-shrink-0">
                           {t.referredName[0]}
                         </div>
-                        <div>
-                          <p className="font-semibold text-gray-900 text-sm">{t.referredName}</p>
+                        <div className="min-w-0">
+                          <p className="font-semibold text-gray-900 text-sm truncate">{t.referredName}</p>
                           <p className="text-xs text-gray-400">{fmtDate(t.approvedAt || t.createdAt)}</p>
                         </div>
                       </div>
-                      <div className="flex items-center gap-3">
+                      <div className="flex items-center gap-3 flex-shrink-0">
                         <span className="font-bold text-emerald-600 text-sm">{fmtN(t.amount)}</span>
                         <TxnBadge status={t.status} autoApplied={t.autoApplied}/>
                       </div>
@@ -396,7 +399,8 @@ export default function ReferralDashboard() {
                   <table className="w-full">
                     <thead>
                       <tr className="bg-gray-50 border-b border-gray-200">
-                        {['Business', 'Bonus', 'Applied', 'Type', 'Date'].map(h => (
+                        {/* ✅ Added Store column */}
+                        {['Business', 'Store', 'Bonus', 'Applied', 'Type', 'Date'].map(h => (
                           <th key={h} className="text-left px-5 py-4 text-xs font-bold text-gray-500 uppercase tracking-wider">{h}</th>
                         ))}
                       </tr>
@@ -405,9 +409,11 @@ export default function ReferralDashboard() {
                       {transactions.map((t, i) => (
                         <motion.tr key={t.id} initial={{ opacity: 0 }} animate={{ opacity: 1 }}
                           transition={{ delay: i * 0.03 }} className="hover:bg-gray-50 transition-colors">
+
+                          {/* Business name + slug */}
                           <td className="px-5 py-4">
                             <div className="flex items-center gap-3">
-                              <div className="w-8 h-8 bg-gradient-to-br from-indigo-500 to-violet-600 rounded-lg flex items-center justify-center text-white font-bold text-xs">
+                              <div className="w-8 h-8 bg-gradient-to-br from-indigo-500 to-violet-600 rounded-lg flex items-center justify-center text-white font-bold text-xs flex-shrink-0">
                                 {t.referredName[0]}
                               </div>
                               <div>
@@ -416,12 +422,30 @@ export default function ReferralDashboard() {
                               </div>
                             </div>
                           </td>
-                          <td className="px-5 py-4 font-bold text-emerald-600 text-sm">{fmtN(t.amount)}</td>
-                          <td className="px-5 py-4 text-sm text-gray-600">
+
+                          {/* ✅ Store URL — clickable link */}
+                          <td className="px-5 py-4">
+                            {t.referredSlug ? (
+                              <a
+                                href={storeUrl(t.referredSlug)}
+                                target="_blank"
+                                rel="noopener noreferrer"
+                                className="inline-flex items-center gap-1.5 text-xs font-medium text-blue-600 hover:text-blue-800 bg-blue-50 hover:bg-blue-100 border border-blue-100 px-2.5 py-1.5 rounded-lg transition-colors whitespace-nowrap"
+                              >
+                                <ExternalLink className="w-3 h-3 flex-shrink-0"/>
+                                View Store
+                              </a>
+                            ) : (
+                              <span className="text-gray-300 text-xs">—</span>
+                            )}
+                          </td>
+
+                          <td className="px-5 py-4 font-bold text-emerald-600 text-sm whitespace-nowrap">{fmtN(t.amount)}</td>
+                          <td className="px-5 py-4 text-sm text-gray-600 whitespace-nowrap">
                             {t.appliedAmount > 0 ? fmtN(t.appliedAmount) : '—'}
                           </td>
                           <td className="px-5 py-4"><TxnBadge status={t.status} autoApplied={t.autoApplied}/></td>
-                          <td className="px-5 py-4 text-sm text-gray-500">{fmtDate(t.redeemedAt || t.approvedAt || t.createdAt)}</td>
+                          <td className="px-5 py-4 text-sm text-gray-500 whitespace-nowrap">{fmtDate(t.redeemedAt || t.approvedAt || t.createdAt)}</td>
                         </motion.tr>
                       ))}
                     </tbody>
@@ -486,7 +510,10 @@ export default function ReferralDashboard() {
                   'No limit on referrals — there is no cap on how much you can earn',
                   'Your referral code is permanent and unique — it never changes',
                 ].map((line, i) => (
-                  <li key={i} className="flex gap-2"><CheckCircle className="w-4 h-4 text-emerald-400 flex-shrink-0 mt-0.5"/>{line}</li>
+                  <li key={i} className="flex gap-2">
+                    <CheckCircle className="w-4 h-4 text-emerald-400 flex-shrink-0 mt-0.5"/>
+                    {line}
+                  </li>
                 ))}
               </ul>
             </div>
