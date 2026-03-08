@@ -112,9 +112,17 @@ export default function ReferralDashboard() {
 
   const share = () => {
     if (!data) return;
-    const msg = `Join MyPadiBusiness — Nigeria's #1 business platform! 🚀\n\nUse my referral code: ${data.referralCode}\n\nRegister at: ${window.location.origin}`;
-    if (navigator.share) navigator.share({ title: 'Join MyPadiBusiness', text: msg }).catch(() => {});
-    else { navigator.clipboard.writeText(msg); toast.success('Share message copied!'); }
+    const shareUrl = `${window.location.origin}?ref=${data.referralCode}`;
+    const msg = [
+      `Join MyPadiBusiness — Nigeria's #1 business platform! 🚀`,
+      ``,
+      `I use it to run my business online. Register here:`,
+      shareUrl,
+      ``,
+      `(My referral code *${data.referralCode}* is already in the link)`,
+    ].join('\n');
+    if (navigator.share) navigator.share({ title: 'Join MyPadiBusiness', text: msg, url: shareUrl }).catch(() => {});
+    else { navigator.clipboard.writeText(shareUrl); toast.success('Share link copied!'); }
   };
 
   if (loading) return (

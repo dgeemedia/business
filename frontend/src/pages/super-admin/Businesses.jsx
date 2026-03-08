@@ -11,7 +11,7 @@ import {
   Download,
 } from 'lucide-react';
 import { motion } from 'framer-motion';
-import { Link, useNavigate } from 'react-router-dom';
+import { Link, useNavigate, useLocation } from 'react-router-dom';
 import toast from 'react-hot-toast';
 import { Card, Button, Badge, Modal, LoadingSpinner, EmptyState, Input } from '../../components/shared';
 import api, { buildSubdomainUrl } from '../../services/api';
@@ -175,6 +175,28 @@ const SuperAdminBusinesses = () => {
   const [exporting,       setExporting]       = useState(false);
 
   useEffect(() => { fetchBusinesses(); }, []);
+
+  const location = useLocation();
+
+  useEffect(() => {
+    const params = new URLSearchParams(location.search);
+    const prefill = params.get('prefill');
+    if (!prefill) return;
+    try {
+      const data = JSON.parse(atob(prefill));
+      setFormData({
+        businessName: data.businessName || '', slug: data.slug || '',
+        businessType: data.businessType || 'restaurant',
+        phone: data.phone || '', whatsappNumber: data.whatsappNumber || '',
+        description: data.description || '', adminEmail: data.adminEmail || '',
+        adminFirstName: data.adminFirstName || '', adminLastName: data.adminLastName || '',
+        adminPhone: data.adminPhone || '', startWithTrial: true,
+      });
+      if (data.referralCode) setReferralCode(data.referralCode);
+      setCreateModalOpen(true);
+      window.history.replaceState({}, '', '/super-admin/businesses');
+    } catch (e) { console.warn('Invalid prefill param', e); }
+  }, [location.search]);
 
   const fetchBusinesses = async () => {
     try {
