@@ -29,6 +29,7 @@ import Ratings      from './pages/Ratings';
 import Settings     from './pages/Settings';
 import Subscription from './pages/Subscription';
 import Referral     from './pages/Referral';
+import Analytics    from './pages/Analytics';
 
 // Super Admin Pages
 import SuperAdminDashboard            from './pages/super-admin/Dashboard';
@@ -130,6 +131,7 @@ function App() {
           <Route path="settings"     element={<Settings />}     />
           <Route path="subscription" element={<Subscription />} />
           <Route path="referral"     element={<Referral />}     />
+          <Route path="analytics"    element={<Analytics />} />
         </Route>
 
         {/* Catch-all */}

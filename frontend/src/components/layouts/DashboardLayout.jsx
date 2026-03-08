@@ -6,7 +6,7 @@ import { Outlet, NavLink, useNavigate } from 'react-router-dom';
 import {
   LayoutDashboard, Package, ShoppingCart, Users, Settings,
   LogOut, Menu, X, Building2, ChevronDown, Star, CreditCard,
-  AlertCircle, MessageSquare, Gift,  // ✅ Gift added
+  AlertCircle, BarChart3, MessageSquare, Gift,  // ✅ Gift added
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
 import useAuthStore from '../../stores/authStore';
@@ -42,7 +42,8 @@ const DashboardLayout = () => {
     { name: 'Users & Team',      path: '/dashboard/users',        icon: Users           },
     { name: 'Reviews',           path: '/dashboard/reviews',      icon: Star            },
     { name: 'Ratings',           path: '/dashboard/ratings',      icon: MessageSquare   },
-    { name: 'Referral Program',  path: '/dashboard/referral',     icon: Gift            }, // ✅ NEW
+    { name: 'Referral Program',  path: '/dashboard/referral',     icon: Gift            }, 
+    { name: 'Analytics',         path: '/dashboard/analytics',    icon: BarChart3 },
     { name: 'Settings',          path: '/dashboard/settings',     icon: Settings        },
     {
       name: 'Subscription',
