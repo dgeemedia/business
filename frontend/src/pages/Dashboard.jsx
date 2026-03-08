@@ -10,7 +10,7 @@ import {
   Package, Clock, CheckCircle, XCircle,
   CreditCard, AlertCircle, RefreshCw, Shield,
   Calendar, Zap, Star, ArrowRight, Download,
-  Gift, Share2, Copy, Check,
+  Gift, Share2, Copy, Check, BarChart3,
 } from 'lucide-react';
 import { motion } from 'framer-motion';
 import { Card, Badge, LoadingSpinner, Button } from '../components/shared';
@@ -314,18 +314,6 @@ function ReferralWidget({ businessName }) {
         )}
       </div>
 
-      {/* Auto-apply status — compact pill only */}
-      <div className={`flex items-center gap-1.5 text-[11px] font-semibold mb-4 ${
-        data.autoApplyEnabled ? 'text-emerald-600' : 'text-amber-600'
-      }`}>
-        <div className={`w-1.5 h-1.5 rounded-full flex-shrink-0 ${
-          data.autoApplyEnabled ? 'bg-emerald-500' : 'bg-amber-500'
-        }`}/>
-        {data.autoApplyEnabled
-          ? 'Auto-apply ON — deducts at next payment'
-          : 'Auto-apply paused by admin'}
-      </div>
-
       {/* Share button */}
       <button
         onClick={handleShare}
@@ -501,7 +489,7 @@ const Dashboard = () => {
   return (
     <div className="space-y-6">
       {/* Header */}
-      <div className="flex items-start justify-between gap-4">
+      <div className="flex flex-col sm:flex-row sm:items-start sm:justify-between gap-3">
         <div>
           <h1 className="text-3xl font-bold text-gray-900 mb-1">Dashboard Overview</h1>
           <p className="text-gray-500 text-sm">
@@ -509,8 +497,8 @@ const Dashboard = () => {
             <span className="font-semibold text-gray-700">{biz.businessName || 'your business'}</span> today.
           </p>
         </div>
-        {/* ✅ Export buttons */}
-        <div className="flex items-center gap-2 flex-shrink-0">
+        {/* Export buttons — full width on mobile, auto on desktop */}
+        <div className="flex items-center gap-2 sm:flex-shrink-0">
           <Button
             size="sm"
             variant="outline"
@@ -518,6 +506,7 @@ const Dashboard = () => {
             onClick={handleExportOrders}
             disabled={exportingOrders || allOrders.length === 0}
             title="Export all orders to CSV"
+            className="flex-1 sm:flex-none justify-center"
           >
             Orders CSV
           </Button>
@@ -528,6 +517,7 @@ const Dashboard = () => {
             onClick={handleExportCustomers}
             disabled={exportingCustomers || allOrders.length === 0}
             title="Export customer list to CSV"
+            className="flex-1 sm:flex-none justify-center"
           >
             Customers CSV
           </Button>
@@ -709,6 +699,21 @@ const Dashboard = () => {
 
           {/* ✅ Referral mini widget */}
           <ReferralWidget businessName={biz.businessName} />
+
+          {/* Analytics shortcut card */}
+          <a
+            href="/dashboard/analytics"
+            className="block bg-gradient-to-br from-gray-950 to-gray-800 rounded-2xl p-5 hover:opacity-90 transition-opacity group"
+          >
+            <div className="flex items-center justify-between mb-3">
+              <div className="w-9 h-9 bg-orange-500 rounded-xl flex items-center justify-center">
+                <BarChart3 className="w-5 h-5 text-white" />
+              </div>
+              <ArrowRight className="w-4 h-4 text-white/40 group-hover:text-white/80 transition-colors" />
+            </div>
+            <p className="text-white font-bold text-sm mb-0.5">Store Analytics</p>
+            <p className="text-white/40 text-xs">Revenue trends, order stats, smart insights</p>
+          </a>
         </div>
       </div>
 

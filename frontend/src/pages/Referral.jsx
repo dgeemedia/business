@@ -18,6 +18,7 @@ function fmtDate(d) {
 }
 // ✅ Build the store URL from a slug
 function storeUrl(slug) {
+  const ROOT_DOMAIN = import.meta.env.VITE_ROOT_DOMAIN || 'mypadifood.com';
   return `https://www.${ROOT_DOMAIN}/store/${slug}`;
 }
 
